@@ -15,4 +15,7 @@ macro(add_unittest TEST_NAME)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endmacro(add_unittest)
 
-add_unittest(all_test tests.cpp)
+add_unittest(all_test
+  tests.cpp 
+  ../simdjson/singleheader/simdjson.cpp
+)
