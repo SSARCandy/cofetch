@@ -69,8 +69,9 @@ class Http {
     curl_global_cleanup();
   }
 
+  template <bool is_need_read = true>
   void poll() {
-    if (handle_count_ == 0) {
+    if constexpr (!is_need_read) {
       curl_multi_socket_action(multi_handle_, CURL_SOCKET_TIMEOUT, 0,
                                &handle_count_);
       return;
@@ -80,6 +81,7 @@ class Http {
       const auto& s = events_[idx].data.fd;
       curl_multi_socket_action(multi_handle_, s, 0, &handle_count_);
     }
+    if constexpr (!is_need_read) return;
     multi_info_read();
   }
 
@@ -153,7 +155,7 @@ class Http {
   void get() {
     curl_easy_setopt(eh_, CURLOPT_HTTPGET, 1L);
     curl_multi_add_handle(multi_handle_, eh_);
-    poll();
+    poll<false>();
   }
 
   /**
@@ -162,7 +164,7 @@ class Http {
   void post() {
     curl_easy_setopt(eh_, CURLOPT_POST, 1L);
     curl_multi_add_handle(multi_handle_, eh_);
-    poll();
+    poll<false>();
   }
 
   /**
@@ -171,7 +173,7 @@ class Http {
   void del() {
     curl_easy_setopt(eh_, CURLOPT_CUSTOMREQUEST, "DELETE");
     curl_multi_add_handle(multi_handle_, eh_);
-    poll();
+    poll<false>();
   }
 
   /**
@@ -180,7 +182,7 @@ class Http {
   void put() {
     curl_easy_setopt(eh_, CURLOPT_CUSTOMREQUEST, "PUT");
     curl_multi_add_handle(multi_handle_, eh_);
-    poll();
+    poll<false>();
   }
 
   int pending_requests() const { return handle_count_; }
