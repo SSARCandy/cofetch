@@ -23,7 +23,7 @@ else
 	exit 1
 fi
 
-file_list=$(find http test \( -name '*.h' -or -name '*.cpp' \))
+file_list=$(find http test examples \( -name '*.h' -or -name '*.cpp' \))
 return_code=0
 for f in ${file_list}; do
     checker_cmd="${DIFF_EXE} -u <(cat ${f}) <(${CLANG_FORMATTER} ${f} -style=file)"
