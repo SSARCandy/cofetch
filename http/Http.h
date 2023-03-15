@@ -72,14 +72,20 @@ class Http {
   template <bool is_need_read = true>
   void poll() {
     if constexpr (!is_need_read) {
+      // https://curl.se/mail/lib-2020-10/0036.html
+      curl_multi_add_handle(multi_handle_, eh_);
       curl_multi_socket_action(multi_handle_, CURL_SOCKET_TIMEOUT, 0,
                                &handle_count_);
-      return;
     }
-    const auto ready_cnt = epoll_wait(fd_epoll_, events_, 8, 30000);
-    for (int idx = 0; idx < ready_cnt; ++idx) {
-      const auto& s = events_[idx].data.fd;
-      curl_multi_socket_action(multi_handle_, s, 0, &handle_count_);
+    const auto ready_cnt = epoll_wait(fd_epoll_, events_, HTTP_POOL, 0);
+    if (ready_cnt == 0) {
+      curl_multi_socket_action(multi_handle_, CURL_SOCKET_TIMEOUT, 0,
+                               &handle_count_);
+    } else {
+      for (int idx = 0; idx < ready_cnt; ++idx) {
+        const auto& s = events_[idx].data.fd;
+        curl_multi_socket_action(multi_handle_, s, 0, &handle_count_);
+      }
     }
     if constexpr (!is_need_read) return;
     multi_info_read();
