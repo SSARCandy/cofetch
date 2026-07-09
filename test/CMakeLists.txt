@@ -11,11 +11,13 @@ macro(add_unittest TEST_NAME)
         gtest
         gtest_main
         curl
+        Threads::Threads
     )
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endmacro(add_unittest)
 
 add_unittest(all_test
-  tests.cpp 
+  tests.cpp
+  cofetch_tests.cpp
   ../simdjson/singleheader/simdjson.cpp
 )
