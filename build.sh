@@ -29,7 +29,7 @@ cat <<EOF
     -c, --clean       Clean build
     -d, --debug       Build with debug mode
     -j, --jobs        Use N cores to build
-    -t, --tetst       Build Debug and run tests
+    -t, --test        Build Debug and run tests
 
 EOF
 }

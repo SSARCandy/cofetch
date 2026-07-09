@@ -37,9 +37,9 @@ TEST(Cofetch, transport_error) {
   asio::co_spawn(
       io,
       [&]() -> asio::awaitable<void> {
-        const auto [ec, res] = co_await client.async_get(
-            "https://nonexistent.invalid/",
-            asio::as_tuple(asio::use_awaitable));
+        const auto [ec, res] =
+            co_await client.async_get("https://nonexistent.invalid/",
+                                      asio::as_tuple(asio::use_awaitable));
         EXPECT_TRUE(static_cast<bool>(ec));
         EXPECT_TRUE(ec.category() == cofetch::curl_category());
         EXPECT_FALSE(res.is_ok());
@@ -86,9 +86,9 @@ TEST(Cofetch, sequential_chain) {
         EXPECT_NE(std::string::npos, first.data_.find("42"));
 
         // The second request depends on the first: linear code, no nesting.
-        const auto second = co_await client.async_post(
-            "https://postman-echo.com/post", "from_first=42",
-            asio::use_awaitable);
+        const auto second =
+            co_await client.async_post("https://postman-echo.com/post",
+                                       "from_first=42", asio::use_awaitable);
         EXPECT_TRUE(second.is_ok());
         EXPECT_NE(std::string::npos, second.data_.find("from_first"));
         done = true;
@@ -119,8 +119,7 @@ TEST(Cofetch, callback_busy_poll) {
 TEST(Cofetch, use_future) {
   asio::io_context io;
   Client client(io);
-  auto fut =
-      client.async_get("https://postman-echo.com/get", asio::use_future);
+  auto fut = client.async_get("https://postman-echo.com/get", asio::use_future);
   io.run();
   const Response res = fut.get();
   EXPECT_TRUE(res.is_ok());
