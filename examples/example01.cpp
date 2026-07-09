@@ -1,32 +1,32 @@
+#include <asio.hpp>
 #include <chrono>
 #include <iostream>
 
-#include "http/http.h"
-#include "simdjson/singleheader/simdjson.h"
+#include "http/cofetch.h"
 
 using namespace std;
 
+// Throughput demo: many concurrent requests, driven by a busy-polled event
+// loop (hot-loop style). See example02 for the coroutine API.
 constexpr size_t REQUESTS = 200;
+
 int main() {
   const auto start = chrono::high_resolution_clock::now();
-  const string url = "https://fapi.binance.com/fapi/v1/time";
-  Http http;
+  asio::io_context io;
+  cofetch::Client http(io);
 
   size_t completed = 0;
   size_t failed = 0;
-  for (auto i = 0; i < REQUESTS; ++i) {
-    // clang-format off
-    http
-      .request(url, [&](const ResponseInfo& res) {
-        if (!res.is_ok()) ++failed;
-        ++completed;
-      })
-      .get();
-    // clang-format on
+  for (size_t i = 0; i < REQUESTS; ++i) {
+    http.async_get("https://fapi.binance.com/fapi/v1/time",
+                   [&](std::error_code ec, cofetch::Response res) {
+                     if (ec || !res.is_ok()) ++failed;
+                     ++completed;
+                   });
   }
-  do {
-    http.poll();
-  } while (http.pending_requests());
+  while (completed < REQUESTS) {
+    io.poll();
+  }
   const auto stop = chrono::high_resolution_clock::now();
   const chrono::duration<double> duration = stop - start;
   cout << ">> Completed : " << completed << "\n"

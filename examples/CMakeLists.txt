@@ -12,7 +12,6 @@ endmacro(add_example)
 
 add_example(example01
   example01.cpp
-  ../simdjson/singleheader/simdjson.cpp
 )
 
 add_example(example02

@@ -17,7 +17,5 @@ macro(add_unittest TEST_NAME)
 endmacro(add_unittest)
 
 add_unittest(all_test
-  tests.cpp
   cofetch_tests.cpp
-  ../simdjson/singleheader/simdjson.cpp
 )
