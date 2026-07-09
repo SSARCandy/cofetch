@@ -20,10 +20,10 @@
 
 #include <chrono>
 #include <list>
-#include <map>
 #include <memory>
 #include <string>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -177,6 +177,10 @@ class Client {
  private:
   using Handler = asio::any_completion_handler<void(std::error_code, Response)>;
 
+  // Idle easy handles kept for reuse; beyond this they are freed so a burst
+  // of concurrent requests does not pin memory forever.
+  static constexpr size_t kMaxPooledHandles = 64;
+
   struct Transfer {
     Transfer(CURL* e, Handler h) : eh(e), handler(std::move(h)) {}
     CURL* eh;
@@ -188,7 +192,7 @@ class Client {
     std::list<Transfer>::iterator self;
   };
 
-  struct SocketState {
+  struct SocketState : std::enable_shared_from_this<SocketState> {
     explicit SocketState(asio::io_context& io) : socket(io) {}
     asio::ip::tcp::socket socket;
     int watch = 0;  // current CURL_POLL_* interest
@@ -212,8 +216,8 @@ class Client {
     it->body = std::move(r.body_);
 
     curl_easy_setopt(eh, CURLOPT_URL, r.url_.c_str());
-    curl_easy_setopt(eh, CURLOPT_WRITEDATA, &it->buffer);
-    curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(eh, CURLOPT_WRITEDATA, &*it);
+    curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, body_write_cb);
     curl_easy_setopt(eh, CURLOPT_HEADERDATA, &it->header_buffer);
     curl_easy_setopt(eh, CURLOPT_HEADERFUNCTION, write_cb);
     curl_easy_setopt(eh, CURLOPT_PRIVATE, &*it);
@@ -221,6 +225,12 @@ class Client {
                      static_cast<long>(r.timeout_.count()));
     curl_easy_setopt(eh, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(eh, CURLOPT_MAXLIFETIME_CONN, 30L);
+    // "" advertises every decoder curl was built with (gzip, br, ...).
+    curl_easy_setopt(eh, CURLOPT_ACCEPT_ENCODING, "");
+    // Wait for an in-progress connection to the same host and multiplex over
+    // it (HTTP/2) instead of racing to open one connection per request.
+    curl_easy_setopt(eh, CURLOPT_PIPEWAIT, 1L);
+    curl_easy_setopt(eh, CURLOPT_BUFFERSIZE, 512L * 1024L);
     curl_easy_setopt(eh, CURLOPT_OPENSOCKETFUNCTION, open_socket_cb);
     curl_easy_setopt(eh, CURLOPT_OPENSOCKETDATA, this);
     curl_easy_setopt(eh, CURLOPT_CLOSESOCKETFUNCTION, close_socket_cb);
@@ -268,6 +278,19 @@ class Client {
     return n * l;
   }
 
+  static size_t body_write_cb(char* data, size_t n, size_t l, Transfer* t) {
+    if (t->buffer.empty()) {
+      curl_off_t len = 0;
+      if (curl_easy_getinfo(t->eh, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &len) ==
+              CURLE_OK &&
+          len > 0) {
+        t->buffer.reserve(static_cast<size_t>(len));
+      }
+    }
+    t->buffer.append(data, n * l);
+    return n * l;
+  }
+
   // curl asks us (not the OS directly) for sockets, so every fd it uses is
   // backed by an ASIO object we can async_wait on. Cross-platform, no epoll.
   static curl_socket_t open_socket_cb(void* clientp, curlsocktype purpose,
@@ -301,12 +324,19 @@ class Client {
   }
 
   static int socket_cb(CURL*, curl_socket_t fd, int what, void* userp,
-                       void*) {
+                       void* socketp) {
     auto* self = static_cast<Client*>(userp);
-    const auto it = self->sockets_.find(fd);
-    if (it == self->sockets_.end()) return 0;
-    it->second->watch = (what == CURL_POLL_REMOVE) ? 0 : what;
-    if (it->second->watch != 0) self->arm(it->second);
+    auto* state = static_cast<SocketState*>(socketp);
+    if (state == nullptr) {
+      // First notification for this socket: attach the state so curl hands
+      // it back on later calls and we skip the lookup.
+      const auto it = self->sockets_.find(fd);
+      if (it == self->sockets_.end()) return 0;
+      state = it->second.get();
+      curl_multi_assign(self->multi_, fd, state);
+    }
+    state->watch = (what == CURL_POLL_REMOVE) ? 0 : what;
+    if (state->watch != 0) self->arm(state->shared_from_this());
     return 0;
   }
 
@@ -376,7 +406,11 @@ class Client {
                    std::move(t->header_buffer)};
       Handler handler = std::move(t->handler);
       curl_slist_free_all(t->headers);
-      pool_.emplace_back(t->eh);
+      if (pool_.size() < kMaxPooledHandles) {
+        pool_.emplace_back(t->eh);
+      } else {
+        curl_easy_cleanup(t->eh);
+      }
       transfers_.erase(t->self);
 
       const std::error_code ec =
@@ -392,7 +426,7 @@ class Client {
   asio::io_context& io_;
   CURLM* multi_;
   asio::steady_timer timer_;
-  std::map<curl_socket_t, std::shared_ptr<SocketState>> sockets_;
+  std::unordered_map<curl_socket_t, std::shared_ptr<SocketState>> sockets_;
   std::list<Transfer> transfers_;
   std::vector<CURL*> pool_;
   int running_ = 0;
