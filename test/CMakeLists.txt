@@ -1,4 +1,4 @@
-INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/googletest/googletest/include)
+INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/vendor/googletest/googletest/include)
 
 enable_testing()
 
