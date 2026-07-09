@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "http/Http.h"
+#include "http/http.h"
 #include "simdjson/singleheader/simdjson.h"
 
 using namespace simdjson;
@@ -151,6 +151,64 @@ TEST(Http, delete) {
   do {
     http.poll();
   } while (http.pending_requests());
+}
+
+TEST(Http, curl_error) {
+  Http http;
+  bool called = false;
+  http.request("https://nonexistent.invalid/",
+               [&](const ResponseInfo& res) {
+                 called = true;
+                 EXPECT_FALSE(res.is_ok());
+                 EXPECT_NE(CURLE_OK, res.curl_code_);
+                 EXPECT_EQ(0, res.http_code_);
+               })
+      .get();
+
+  do {
+    http.poll();
+  } while (http.pending_requests());
+  EXPECT_TRUE(called);
+}
+
+TEST(Http, interleaved_requests) {
+  const string url = "https://postman-echo.com/post";
+  Http http;
+
+  auto r1 = http.request(url, [&](const ResponseInfo& res) {
+    simdjson::dom::parser parser;
+    const auto d = parser.parse(res.data_);
+    EXPECT_EQ("1", d["form"]["a"].get_string().value());
+  });
+  auto r2 = http.request(url, [&](const ResponseInfo& res) {
+    simdjson::dom::parser parser;
+    const auto d = parser.parse(res.data_);
+    EXPECT_EQ("2", d["form"]["b"].get_string().value());
+  });
+  r1.set_body("a=1");
+  r2.set_body("b=2");
+  r1.post();
+  r2.post();
+
+  do {
+    http.poll();
+  } while (http.pending_requests());
+}
+
+TEST(Http, response_outlives_callback) {
+  Http http;
+  vector<ResponseInfo> responses;
+  http.request("https://postman-echo.com/get",
+               [&](const ResponseInfo& res) { responses.push_back(res); })
+      .get();
+
+  do {
+    http.poll();
+  } while (http.pending_requests());
+
+  ASSERT_EQ(1u, responses.size());
+  EXPECT_TRUE(responses[0].is_ok());
+  EXPECT_LT(0, responses[0].data_.length());
 }
 
 TEST(Http, put) {
