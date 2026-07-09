@@ -17,8 +17,8 @@ class ResponseInfo {
                string header_data, const void* custom_data)
       : curl_code_(curl_code),
         http_code_(http_code),
-        data_(move(data)),
-        header_data_(move(header_data)),
+        data_(std::move(data)),
+        header_data_(std::move(header_data)),
         custom_data_(custom_data) {}
 
   /**
@@ -47,7 +47,7 @@ class RequestInfo {
               const void* custom_data)
       : eh_(eh),
         header_ptr_(nullptr),
-        callback_(move(callback)),
+        callback_(std::move(callback)),
         custom_data_(custom_data) {}
   CURL* eh_;
   curl_slist* header_ptr_;
@@ -93,7 +93,7 @@ class Http {
      * not need to outlive the transfer.
      */
     Request& set_body(string post_fields) {
-      it_->body_ = move(post_fields);
+      it_->body_ = std::move(post_fields);
       curl_easy_setopt(it_->eh_, CURLOPT_POSTFIELDSIZE,
                        static_cast<long>(it_->body_.size()));
       curl_easy_setopt(it_->eh_, CURLOPT_POSTFIELDS, it_->body_.c_str());
@@ -190,7 +190,7 @@ class Http {
       curl_easy_reset(eh);
     }
 
-    request_infos_.emplace_front(eh, move(fn), custom_data);
+    request_infos_.emplace_front(eh, std::move(fn), custom_data);
     const auto it = request_infos_.begin();
     it->self_ = it;
 
@@ -278,8 +278,8 @@ class Http {
       curl_easy_getinfo(msg->easy_handle, CURLINFO_RESPONSE_CODE, &http_code);
       curl_multi_remove_handle(multi_handle_, msg->easy_handle);
 
-      (info->callback_)({curl_code, http_code, move(info->buffer_),
-                         move(info->header_buffer_), info->custom_data_});
+      (info->callback_)({curl_code, http_code, std::move(info->buffer_),
+                         std::move(info->header_buffer_), info->custom_data_});
       curl_slist_free_all(info->header_ptr_);
       eh_pool_.emplace_back(info->eh_);
       request_infos_.erase(info->self_);
