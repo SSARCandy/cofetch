@@ -64,7 +64,7 @@ test() {
         --output-file coverage.info \
         --test-name coverageHtml > /dev/null
 
-    lcov ${LCOV_OPTS} -o coverage.info --extract coverage.info "${CURDIR}/http/*" > /dev/null
+    lcov ${LCOV_OPTS} -o coverage.info --extract coverage.info "${CURDIR}/include/*" > /dev/null
     genhtml --ignore-errors inconsistent -o .coverage coverage.info
 }
 

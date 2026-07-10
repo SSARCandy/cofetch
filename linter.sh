@@ -26,7 +26,7 @@ else
 	exit 1
 fi
 
-file_list=$(find http test examples bench \( -name '*.h' -or -name '*.cpp' \) -not -path 'bench/baseline/*')
+file_list=$(find include test examples bench \( -name '*.h' -or -name '*.cpp' \) -not -path 'bench/baseline/*')
 return_code=0
 for f in ${file_list}; do
     checker_cmd="${DIFF_EXE} -u <(cat ${f}) <(${CLANG_FORMATTER} ${f} -style=file)"

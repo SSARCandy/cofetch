@@ -10,11 +10,11 @@
 // The same source also builds as example03_uring (when liburing is
 // present): -DASIO_HAS_IO_URING -DASIO_DISABLE_EPOLL swaps asio's Linux
 // reactor from epoll to io_uring — cofetch code does not change.
+#include <cofetch.h>
+
 #include <asio.hpp>
 #include <iostream>
 #include <string>
-
-#include "http/cofetch.h"
 
 #ifdef __linux__
 #include <sys/epoll.h>

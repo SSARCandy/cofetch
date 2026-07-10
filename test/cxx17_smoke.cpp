@@ -2,11 +2,11 @@
 // callbacks, the fluent chain, and deferred composition without coroutines.
 #include <asio.hpp>
 //
+#include <cofetch.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-
-#include "http/cofetch.h"
 
 static_assert(__cplusplus < 202002L, "smoke test must compile as C++17");
 

@@ -1,3 +1,5 @@
+#include <cofetch.h>
+
 #include <asio.hpp>
 #include <atomic>
 #include <cstdlib>
@@ -7,7 +9,6 @@
 #include <vector>
 
 #include "bench_util.h"
-#include "http/cofetch.h"
 
 // Env knobs:
 //   COFETCH_BENCH_POLL=1   busy-poll the io_context (trading-loop mode)

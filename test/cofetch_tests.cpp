@@ -1,9 +1,10 @@
+#include <cofetch.h>
+
 #include <asio.hpp>
 #include <cstdlib>
 #include <string>
 
 #include "gtest/gtest.h"
-#include "http/cofetch.h"
 
 using cofetch::Client;
 using cofetch::Request;

@@ -1,7 +1,6 @@
 # cofetch
 
-> Chainable, high-performance async HTTP client for C++ event loops.  
-> Powered by libcurl's engine, ASIO's completion tokens. Made for C++17 and up.
+> Chainable, high-performance async HTTP client for C++ event loops.
 
 Requests **build as a chain** — setters flow off `request()` and the
 HTTP verb fires the transfer, without blocking the thread:
@@ -24,13 +23,12 @@ requests in linear code, no nesting:
 
 ```cpp
 const auto user  = co_await client.async_get(api + "/user", asio::use_awaitable);
-const auto posts = co_await client.async_post(api + "/posts", user.data_,
-                                              asio::use_awaitable);
+const auto posts = co_await client.async_post(api + "/posts", user.data_, asio::use_awaitable);
 ```
 
 ## Why cofetch
 
-- **Header-only.** `#include "http/cofetch.h"`, link against libcurl, done.
+- **Header-only.** `#include <cofetch.h>`, link against libcurl, done.
 - **Chainable syntax.** Build a request with setters, fire it with the
   HTTP verb — the same chain works with callbacks, futures, or
   coroutines.
@@ -66,7 +64,7 @@ Exact numbers, environment, and how to reproduce:
 ```cpp
 #include <asio.hpp>
 #include <iostream>
-#include "http/cofetch.h"
+#include <cofetch.h>
 
 int main() {
   asio::io_context io;
@@ -116,7 +114,7 @@ with `-DCOFETCH_USE_VENDORED_ASIO=ON`.
 
 ### Manual
 
-Copy `http/cofetch.h`, add asio to your include path, link `libcurl`.
+Copy `include/cofetch.h`, add asio to your include path, link `libcurl`.
 
 ## What cofetch is not
 

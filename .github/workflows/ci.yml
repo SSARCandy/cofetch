@@ -24,7 +24,7 @@ jobs:
       - name: Install libcurl
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libcurl4-openssl-dev
       - name: Build smoke test as C++17
-        run: g++ -std=c++17 -Wall -Wextra -isystem vendor/asio/include -I. test/cxx17_smoke.cpp -lcurl -o cxx17_smoke
+        run: g++ -std=c++17 -Wall -Wextra -isystem vendor/asio/include -Iinclude test/cxx17_smoke.cpp -lcurl -o cxx17_smoke
       - name: Run against local echo server
         run: |
           python3 test/echo_server.py --port 18089 &
