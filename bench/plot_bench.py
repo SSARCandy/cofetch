@@ -94,8 +94,11 @@ def render(rows, path, dark, transparent=True):
 
     fig.text(0.99, 0.005, "requests / second — higher is better",
              ha="right", color=muted, fontsize=9)
-    fig.savefig(path, transparent=transparent, bbox_inches="tight",
-                facecolor="white" if not transparent else "auto")
+    if transparent:
+        # NB: passing any facecolor kwarg would override transparent=True.
+        fig.savefig(path, transparent=True, bbox_inches="tight")
+    else:
+        fig.savefig(path, facecolor="white", bbox_inches="tight")
     plt.close(fig)
 
 
