@@ -102,15 +102,8 @@ with concurrency:
 | cpp-httplib | 0.16 s | 12,604 |
 | *epoll ancestor of cofetch (internal reference)* | 0.13 s | 15,487 |
 
-Honest notes: the raw-epoll client cofetch grew out of (kept in
-`bench/baseline/`) is still 25–50% faster on loopback — the current
-price of the portable ASIO reactor (per-event re-arm, executor
-dispatch), not of coroutines (callback and coroutine chains differ by
-~2%). An io_uring ASIO backend recovers about half of that gap;
-closing the rest is on the roadmap. On a real network, milliseconds of
-RTT dwarf these microseconds — what remains is the thread count you
-pay: one loop beats a sync client per-thread, and per-core loops beat
-a 20-thread pool by ~60%.
+> [!NOTE]
+> The raw-epoll client cofetch grew out of (kept in `bench/baseline/`) is still 25–50% faster on loopback — the current price of the portable ASIO reactor (per-event re-arm, executor dispatch), not of coroutines (callback and coroutine chains differ by ~2%). An io_uring ASIO backend recovers about half of that gap; closing the rest is on the roadmap. On a real network, milliseconds of RTT dwarf these microseconds — what remains is the thread count you pay: one loop beats a sync client per-thread, and per-core loops beat a 20-thread pool by ~60%.
 
 ## Quick start
 
