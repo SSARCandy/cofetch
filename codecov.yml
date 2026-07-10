@@ -1,0 +1,6 @@
+# Coverage accounting is about the library itself: include/cofetch.h.
+ignore:
+  - "test"
+  - "examples"
+  - "bench"
+  - "vendor"

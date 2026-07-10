@@ -92,6 +92,10 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: coverage.xml
+          # Without these the CLI's gcov plugin re-scans build/ and
+          # uploads test/example coverage alongside the filtered XML.
+          disable_search: true
+          plugins: noop
           token: ${{ secrets.CODECOV_TOKEN }}
 
   build-and-test:
