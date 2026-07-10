@@ -32,7 +32,8 @@ const auto posts = co_await client.async_post(api + "/posts", user.data_, asio::
 
 ## Why cofetch
 
-- **Header-only.** `#include <cofetch.h>`, link against libcurl, done.
+- **Header-only.** One file, nothing to build — bring libcurl (linked)
+  and ASIO (include path), then `#include <cofetch.h>`.
 - **Chainable syntax.** Build a request with setters, fire it with the
   HTTP verb — the same chain works with callbacks, futures, or
   coroutines.
