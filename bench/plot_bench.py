@@ -19,7 +19,6 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 COFETCH = "#3b82f6"
 RIVAL = "#9ca3af"
-REFERENCE = "reference"  # hatched, theme-colored at render time
 
 # (name, scenario, concurrency) -> bar label; first entry drawn topmost.
 PANELS = [
@@ -30,8 +29,6 @@ PANELS = [
         (("cpp-httplib-threads", "throughput", 1), "cpp-httplib · sync",
          RIVAL),
         (("cpr-threads", "throughput", 1), "cpr · sync", RIVAL),
-        (("epoll-baseline", "throughput", 100), "epoll ancestor (internal ref)",
-         REFERENCE),
     ]),
     ("One thread per core (20) — 20,000 GETs", [
         (("cofetch-20loops", "throughput", 100), "cofetch · 20 loops",
@@ -45,8 +42,6 @@ PANELS = [
         (("cofetch-coro", "chain", 1), "cofetch · coroutine", COFETCH),
         (("cpp-httplib", "chain", 1), "cpp-httplib", RIVAL),
         (("cpr", "chain", 1), "cpr", RIVAL),
-        (("epoll-baseline", "chain", 1), "epoll ancestor (internal ref)",
-         REFERENCE),
     ]),
 ]
 
@@ -83,16 +78,9 @@ def render(rows, path, dark):
         bars = bars[::-1]  # barh draws bottom-up; keep declared order on top
         labels = [label for _, label, _ in bars]
         values = [rows[key] for key, _, _ in bars]
-        colors = [
-            "none" if c == REFERENCE else c for _, _, c in bars
-        ]
-        edges = [muted if c == REFERENCE else "none" for _, _, c in bars]
-        hatches = ["///" if c == REFERENCE else "" for _, _, c in bars]
+        colors = [c for _, _, c in bars]
 
-        drawn = ax.barh(labels, values, color=colors, edgecolor=edges,
-                        height=0.62)
-        for patch, hatch in zip(drawn, hatches):
-            patch.set_hatch(hatch)
+        drawn = ax.barh(labels, values, color=colors, height=0.62)
         for patch, value in zip(drawn, values):
             ax.text(value + max(values) * 0.02,
                     patch.get_y() + patch.get_height() / 2,
