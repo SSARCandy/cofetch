@@ -1,0 +1,70 @@
+// Registers the example programs with doxygen so the docs site renders
+// them under "Examples". One \example per file in examples/; keep this
+// list in sync with examples/README.md.
+
+/**
+ * @example example_hello.cpp
+ * The smallest cofetch program: one GET, one callback.
+ */
+
+/**
+ * @example example_fluent.cpp
+ * Building a POST with the chainable setters, finished by the verb.
+ */
+
+/**
+ * @example example_coroutine.cpp
+ * Dependent requests in linear code with C++20 `co_await`.
+ */
+
+/**
+ * @example example_future.cpp
+ * `std::future` style: start the request, drive the loop, `get()`.
+ */
+
+/**
+ * @example example_concurrent.cpp
+ * Twenty requests in flight at once on a single thread.
+ */
+
+/**
+ * @example example_errors.cpp
+ * Transport errors (error_code) vs HTTP error statuses (is_ok()).
+ */
+
+/**
+ * @example example_cancellation.cpp
+ * A time budget per request with `asio::cancel_after`.
+ */
+
+/**
+ * @example example_redirects.cpp
+ * 3xx passed through by default; `follow_redirects()` to chase them.
+ */
+
+/**
+ * @example example_http2.cpp
+ * Requests multiplexed over one HTTP/2 connection, and opting a
+ * request back to HTTP/1.1 through the `.curl()` escape hatch.
+ */
+
+/**
+ * @example example_tls.cpp
+ * https out of the box; TLS knobs via the `.curl()` escape hatch.
+ */
+
+/**
+ * @example example_compression.cpp
+ * gzip/brotli responses arrive already decoded.
+ */
+
+/**
+ * @example example_keepalive.cpp
+ * Connection pooling: the second request skips the handshake.
+ */
+
+/**
+ * @example example_reactors.cpp
+ * `run()` vs busy-`poll()` vs a foreign epoll loop; the same source
+ * builds against asio's io_uring reactor.
+ */
