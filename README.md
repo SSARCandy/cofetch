@@ -41,8 +41,8 @@ Any ASIO completion token works — `std::future`, `asio::deferred`,
   with `run()`, or `poll()` it from a busy loop that must never block
   (the trading hot path this library grew out of).
 - **libcurl underneath.** HTTP/1.1 and HTTP/2 multiplexing, TLS,
-  compression, connection pooling, redirects — two decades of protocol
-  maturity instead of a hand-rolled client.
+  compression, connection pooling, proxy support — two decades of
+  protocol maturity instead of a hand-rolled client.
 - **fetch()-like error model.** Transport failures arrive as
   `std::error_code` (curl error category); HTTP 4xx/5xx are *responses*,
   not errors — check `res.is_ok()`.
