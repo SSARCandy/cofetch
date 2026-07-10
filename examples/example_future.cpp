@@ -7,10 +7,10 @@
 
 int main() {
   asio::io_context io;
-  cofetch::Client client(io);
+  cofetch::Client http(io);
 
   auto pending =
-      client.async_get("https://postman-echo.com/get", asio::use_future);
+      http.async_get("https://postman-echo.com/get", asio::use_future);
 
   io.run();  // the future is ready once the loop drains
 

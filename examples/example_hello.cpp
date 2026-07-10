@@ -6,10 +6,10 @@
 
 int main() {
   asio::io_context io;
-  cofetch::Client client(io);
+  cofetch::Client http(io);
 
-  client.async_get("https://postman-echo.com/get", [](std::error_code ec,
-                                                      cofetch::Response res) {
+  http.async_get("https://postman-echo.com/get", [](std::error_code ec,
+                                                    cofetch::Response res) {
     if (ec) {
       std::cerr << "transport error: " << ec.message() << "\n";
       return;

@@ -5,19 +5,19 @@
 // co_await interface additionally needs C++20.
 //
 //   // fluent chain, finished by the HTTP verb (zero-overhead hot path):
-//   client.request(url)
+//   http.request(url)
 //       .headers({"content-type: application/json"})
 //       .body(payload)
 //       .post([](std::error_code ec, cofetch::Response res) {});
 //
 //   // std::future:
-//   auto fut = client.async_get(url, asio::use_future);
+//   auto fut = http.async_get(url, asio::use_future);
 //
 //   // .then()-style chaining (see test/cofetch_tests.cpp):
-//   client.async_get(url, asio::deferred)(asio::deferred(next))(handler);
+//   http.async_get(url, asio::deferred)(asio::deferred(next))(handler);
 //
 //   // C++20 coroutine:
-//   auto res = co_await client.async_get(url, asio::use_awaitable);
+//   auto res = co_await http.async_get(url, asio::use_awaitable);
 //
 // Drive it with io_context::run(), or io_context::poll() in a busy loop.
 // Requests are cancellable through asio's cancellation slots
@@ -228,7 +228,7 @@ class Client {
    * @brief Fluent builder bound to this client. Chain setters and finish
    * with the HTTP verb, which starts the transfer:
    *
-   *   co_await client.request(url).body("b=1").post(asio::use_awaitable);
+   *   co_await http.request(url).body("b=1").post(asio::use_awaitable);
    *
    * A builder must not be reused after get()/post()/put()/del().
    */

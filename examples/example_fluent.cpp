@@ -8,9 +8,9 @@
 
 int main() {
   asio::io_context io;
-  cofetch::Client client(io);
+  cofetch::Client http(io);
 
-  client.request("https://postman-echo.com/post")
+  http.request("https://postman-echo.com/post")
       .headers({"content-type: application/json"})
       .body(R"({"greeting": "hello cofetch"})")
       .timeout(std::chrono::seconds(2))

@@ -30,9 +30,9 @@ namespace {
 constexpr int kRequests = 5;
 constexpr const char* kUrl = "https://postman-echo.com/get";
 
-void launch_requests(cofetch::Client& client, int& completed) {
+void launch_requests(cofetch::Client& http, int& completed) {
   for (int i = 0; i < kRequests; ++i) {
-    client.async_get(kUrl, [&, i](std::error_code ec, cofetch::Response res) {
+    http.async_get(kUrl, [&, i](std::error_code ec, cofetch::Response res) {
       ++completed;
       cout << "  #" << i << " -> "
            << (ec ? ec.message() : to_string(res.http_code_)) << "\n";
@@ -45,9 +45,9 @@ void launch_requests(cofetch::Client& client, int& completed) {
 int main(int argc, char** argv) {
   const string mode = argc > 1 ? argv[1] : "run";
   asio::io_context io;
-  cofetch::Client client(io);
+  cofetch::Client http(io);
   int completed = 0;
-  launch_requests(client, completed);
+  launch_requests(http, completed);
 
   if (mode == "run") {
     // Blocking reactor: sleeps in the kernel until sockets are ready,

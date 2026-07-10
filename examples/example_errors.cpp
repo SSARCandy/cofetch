@@ -8,21 +8,21 @@
 
 int main() {
   asio::io_context io;
-  cofetch::Client client(io);
+  cofetch::Client http(io);
 
   // DNS failure: ec is set, the response carries the curl error text.
-  client.async_get("https://no-such-host.invalid/",
-                   [](std::error_code ec, cofetch::Response) {
-                     std::cout << "transport error: " << ec.message() << "\n";
-                   });
+  http.async_get("https://no-such-host.invalid/",
+                 [](std::error_code ec, cofetch::Response) {
+                   std::cout << "transport error: " << ec.message() << "\n";
+                 });
 
   // 404: the transfer worked, the server just said no.
-  client.async_get("https://postman-echo.com/status/404",
-                   [](std::error_code ec, cofetch::Response res) {
-                     if (!ec && !res.is_ok()) {
-                       std::cout << "http status: " << res.http_code_ << "\n";
-                     }
-                   });
+  http.async_get("https://postman-echo.com/status/404",
+                 [](std::error_code ec, cofetch::Response res) {
+                   if (!ec && !res.is_ok()) {
+                     std::cout << "http status: " << res.http_code_ << "\n";
+                   }
+                 });
 
   io.run();
 }

@@ -8,9 +8,9 @@
 
 using namespace std::chrono_literals;
 
-asio::awaitable<void> impatient_get(cofetch::Client& client) {
+asio::awaitable<void> impatient_get(cofetch::Client& http) {
   // The server takes 2 s to answer; our patience runs out after 500 ms.
-  const auto [ec, res] = co_await client.async_get(
+  const auto [ec, res] = co_await http.async_get(
       "https://postman-echo.com/delay/2",
       asio::cancel_after(500ms, asio::as_tuple(asio::use_awaitable)));
 
@@ -25,7 +25,7 @@ asio::awaitable<void> impatient_get(cofetch::Client& client) {
 
 int main() {
   asio::io_context io;
-  cofetch::Client client(io);
-  asio::co_spawn(io, impatient_get(client), asio::detached);
+  cofetch::Client http(io);
+  asio::co_spawn(io, impatient_get(http), asio::detached);
   io.run();
 }

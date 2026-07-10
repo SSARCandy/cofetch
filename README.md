@@ -10,7 +10,7 @@ Requests **build as a chain** — setters flow off `request()` and the
 HTTP verb fires the transfer, without blocking the thread:
 
 ```cpp
-client
+http
   .request("https://api.example.com/orders")
   .headers({"content-type: application/json"})
   .body(R"({"qty": 1})")
@@ -28,8 +28,8 @@ On C++20, that includes coroutines: dependent requests in linear
 code, no nesting:
 
 ```cpp
-const auto user  = co_await client.async_get(api + "/user", asio::use_awaitable);
-const auto posts = co_await client.async_post(api + "/posts", user.data_, asio::use_awaitable);
+const auto user  = co_await http.async_get(api + "/user", asio::use_awaitable);
+const auto posts = co_await http.async_post(api + "/posts", user.data_, asio::use_awaitable);
 ```
 
 ## Why cofetch
@@ -82,9 +82,9 @@ Exact numbers, environment, and how to reproduce:
 
 int main() {
   asio::io_context io;
-  cofetch::Client client(io);
+  cofetch::Client http(io);
 
-  client
+  http
     .request("https://postman-echo.com/post")
     .body("hello=cofetch")
     .post([](std::error_code ec, cofetch::Response res) {
@@ -104,7 +104,7 @@ On C++20 the same flow reads linearly with `co_await`
 [examples/](examples/).
 
 Prefer a plain value? `cofetch::Request` holds the same fields and
-fires later via `client.async_perform(std::move(req), token)`.
+fires later via `http.async_perform(std::move(req), token)`.
 
 ## Installation
 
