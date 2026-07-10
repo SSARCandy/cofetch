@@ -132,6 +132,7 @@ Copy `include/cofetch.h`, add asio to your include path, link `libcurl`.
 git submodule update --init          # asio + googletest (dev only)
 ./build.sh -t                        # Debug build + tests + coverage
 ./linter.sh                          # clang-format check (v19 pinned in CI)
+doxygen Doxyfile                     # API reference -> docs/api/html/
 ```
 
 CI runs the linter, the offline test suite (local echo server, no
