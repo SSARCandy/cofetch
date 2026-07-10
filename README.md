@@ -95,12 +95,13 @@ int main() {
       std::cout << res.http_code_ << " " << res.data_ << "\n";
     });
 
-  io.run();  // or io.poll() from your own loop — see examples/example03.cpp
+  io.run();  // or io.poll() from your own loop — examples/example_reactors.cpp
 }
 ```
 
 On C++20 the same flow reads linearly with `co_await`
-(`examples/example02.cpp`).
+(`examples/example_coroutine.cpp`); the full set lives in
+[examples/](examples/).
 
 Prefer a plain value? `cofetch::Request` holds the same fields and
 fires later via `client.async_perform(std::move(req), token)`.

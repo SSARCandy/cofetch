@@ -1,15 +1,16 @@
 // Same client, different reactors.
 //
-//   example03 run      asio owns the thread: epoll on Linux, kqueue on
-//                      macOS, IOCP on Windows.
-//   example03 poll     you own the thread; asio only runs what is ready
-//                      (the trading busy-loop mode).
-//   example03 foreign  your app already has an epoll loop: keep it in
-//                      charge and service cofetch each tick (Linux).
+//   example_reactors run      asio owns the thread: epoll on Linux,
+//                             kqueue on macOS, IOCP on Windows.
+//   example_reactors poll     you own the thread; asio only runs what
+//                             is ready (the trading busy-loop mode).
+//   example_reactors foreign  your app already has an epoll loop: keep
+//                             it in charge, service cofetch each tick
+//                             (Linux).
 //
-// The same source also builds as example03_uring (when liburing is
-// present): -DASIO_HAS_IO_URING -DASIO_DISABLE_EPOLL swaps asio's Linux
-// reactor from epoll to io_uring — cofetch code does not change.
+// The same source also builds as example_reactors_uring (when liburing
+// is present): -DASIO_HAS_IO_URING -DASIO_DISABLE_EPOLL swaps asio's
+// Linux reactor from epoll to io_uring — cofetch code does not change.
 #include <cofetch.h>
 
 #include <asio.hpp>
