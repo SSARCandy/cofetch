@@ -20,7 +20,8 @@ add_library(cofetch INTERFACE)
 add_library(cofetch::cofetch ALIAS cofetch)
 target_include_directories(cofetch INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
-target_compile_features(cofetch INTERFACE cxx_std_20)
+# Consumers need C++17; the co_await interface lights up on C++20.
+target_compile_features(cofetch INTERFACE cxx_std_17)
 target_link_libraries(cofetch INTERFACE CURL::libcurl Threads::Threads)
 
 if(COFETCH_USE_VENDORED_ASIO)

@@ -1,38 +1,31 @@
 # cofetch
 
-> `await fetch()` for modern C++ — an async HTTP client for event-loop
-> applications, built on libcurl's multi interface and standalone ASIO.
+> Chainable, high-performance async HTTP client for C++ event loops —
+> libcurl's engine, ASIO's completion tokens. C++17 and up.
 
 Requests **build as a chain** — setters flow off `request()` and the
-HTTP verb fires the transfer:
+HTTP verb fires the transfer, without blocking the thread:
 
 ```cpp
-const auto res = co_await client.request("https://api.example.com/orders")
-                     .headers({"content-type: application/json"})
-                     .body(R"({"qty": 1})")
-                     .timeout(std::chrono::seconds(2))
-                     .post(asio::use_awaitable);
+client.request("https://api.example.com/orders")
+    .headers({"content-type: application/json"})
+    .body(R"({"qty": 1})")
+    .timeout(std::chrono::seconds(2))
+    .post([](std::error_code ec, cofetch::Response res) {
+      // transport errors in ec; HTTP status in res.http_code_
+    });
 ```
 
-Dependent requests **chain like promises** — `await fetch()` flow in
-linear code, no callback nesting:
+Callbacks are the zero-overhead hot path, and any ASIO completion
+token plugs into the same calls — `std::future`, `asio::deferred`,
+`asio::as_tuple`. On C++20, that includes coroutines: dependent
+requests in linear code, no nesting:
 
 ```cpp
 const auto user  = co_await client.async_get(api + "/user", asio::use_awaitable);
 const auto posts = co_await client.async_post(api + "/posts", user.data_,
                                               asio::use_awaitable);
 ```
-
-No coroutines in your codebase? Every call also takes a plain
-callback — this is the zero-overhead hot path:
-
-```cpp
-client.async_get(api + "/user",
-                 [](std::error_code ec, cofetch::Response user) { /*...*/ });
-```
-
-Any ASIO completion token works — `std::future`, `asio::deferred`,
-`asio::as_tuple` — one implementation behind all of them.
 
 ## Why cofetch
 
@@ -46,6 +39,9 @@ Any ASIO completion token works — `std::future`, `asio::deferred`,
 - **fetch()-like error model.** Transport failures arrive as
   `std::error_code` (curl error category); HTTP 4xx/5xx are *responses*,
   not errors — check `res.is_ok()`.
+- **C++17-friendly.** The full API — chains, callbacks, futures,
+  `deferred` — works on C++17 (CI-enforced); C++20 adds the `co_await`
+  interface.
 - **Header-only.** `#include "http/cofetch.h"`, link against libcurl,
   done.
 
@@ -104,26 +100,29 @@ hide it.
 
 ```cpp
 #include <asio.hpp>
+#include <iostream>
 #include "http/cofetch.h"
-
-asio::awaitable<void> demo(cofetch::Client& client) {
-  const auto time = co_await client.async_get(
-      "https://fapi.binance.com/fapi/v1/time", asio::use_awaitable);
-
-  // Chain a dependent request: plain linear code, no callback nesting.
-  const auto echo = co_await client.async_post(
-      "https://postman-echo.com/post", "prev=" + time.data_,
-      asio::use_awaitable);
-  std::cout << echo.data_ << "\n";
-}
 
 int main() {
   asio::io_context io;
   cofetch::Client client(io);
-  asio::co_spawn(io, demo(client), asio::detached);
-  io.run();
+
+  client.request("https://postman-echo.com/post")
+      .body("hello=cofetch")
+      .post([](std::error_code ec, cofetch::Response res) {
+        if (ec) {
+          std::cerr << ec.message() << "\n";  // DNS, TLS, timeout...
+          return;
+        }
+        std::cout << res.http_code_ << " " << res.data_ << "\n";
+      });
+
+  io.run();  // or io.poll() from your own loop — see examples/example03.cpp
 }
 ```
+
+On C++20 the same flow reads linearly with `co_await`
+(`examples/example02.cpp`).
 
 Requests are plain values too — build one ahead of time, fire it later:
 
@@ -135,18 +134,10 @@ req.method(cofetch::Request::Method::POST)
 client.async_perform(std::move(req), token);
 ```
 
-Error handling, all styles:
-
-```cpp
-// coroutine: as_tuple avoids exceptions
-auto [ec, res] = co_await client.async_get(url, asio::as_tuple(asio::use_awaitable));
-if (ec) { /* transport failed: DNS, TLS, timeout... (curl category) */ }
-else if (!res.is_ok()) { /* HTTP error status: res.http_code_ */ }
-```
-
 ## Installation
 
-Requirements: a C++20 compiler, libcurl ≥ 7.80 (dev headers), and
+Requirements: a C++17 compiler (the `co_await` interface needs C++20),
+libcurl ≥ 7.80 (dev headers), and
 [standalone ASIO](https://github.com/chriskohlhoff/asio).
 
 ### CMake (FetchContent)
@@ -191,5 +182,6 @@ COFETCH_LIVE_TESTS=1 ./build.sh -t   # also run live-network tests
                                      # example03_uring = same code on io_uring
 ```
 
-CI runs the linter and the offline test suite (local echo server, no
-external endpoints) on Linux gcc/clang and macOS.
+CI runs the linter, the offline test suite (local echo server, no
+external endpoints) on Linux gcc/clang and macOS, and a C++17 consumer
+smoke build.
