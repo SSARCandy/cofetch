@@ -3,6 +3,17 @@
 > `await fetch()` for modern C++ — an async HTTP client for event-loop
 > applications, built on libcurl's multi interface and standalone ASIO.
 
+Requests **build as a chain** — setters flow off `request()` and the
+HTTP verb fires the transfer:
+
+```cpp
+const auto res = co_await client.request("https://api.example.com/orders")
+                     .headers({"content-type: application/json"})
+                     .body(R"({"qty": 1})")
+                     .timeout(std::chrono::seconds(2))
+                     .post(asio::use_awaitable);
+```
+
 Dependent requests **chain like promises**. The JavaScript you write
 every day:
 
@@ -126,14 +137,13 @@ int main() {
 }
 ```
 
-Full request control via the builder:
+Requests are plain values too — build one ahead of time, fire it later:
 
 ```cpp
 cofetch::Request req("https://api.example.com/orders");
 req.method(cofetch::Request::Method::POST)
    .headers({"content-type: application/json", "x-api-key: k"})
-   .body(R"({"qty": 1})")
-   .timeout(std::chrono::seconds(2));
+   .body(R"({"qty": 1})");
 client.async_perform(std::move(req), token);
 ```
 

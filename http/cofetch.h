@@ -3,7 +3,13 @@
 //
 // One implementation, any ASIO completion token:
 //
-//   // coroutine ("await fetch()"):
+//   // fluent chain, finished by the HTTP verb ("await fetch()"):
+//   auto res = co_await client.request(url)
+//                  .headers({"content-type: application/json"})
+//                  .body(payload)
+//                  .post(asio::use_awaitable);
+//
+//   // one-liner:
 //   auto res = co_await client.async_get(url, asio::use_awaitable);
 //
 //   // plain callback (zero-overhead hot path):
@@ -173,6 +179,72 @@ class Client {
                              .method(Request::Method::POST)
                              .body(std::move(body)),
                          std::forward<CompletionToken>(token));
+  }
+
+  /**
+   * @brief Fluent builder bound to this client. Chain setters and finish
+   * with the HTTP verb, which starts the transfer:
+   *
+   *   co_await client.request(url).body("b=1").post(asio::use_awaitable);
+   *
+   * A builder must not be reused after get()/post()/put()/del().
+   */
+  class RequestBuilder {
+   public:
+    RequestBuilder(Client& client, std::string url)
+        : client_(client), req_(std::move(url)) {}
+
+    RequestBuilder& headers(std::vector<std::string> h) {
+      req_.headers(std::move(h));
+      return *this;
+    }
+    RequestBuilder& body(std::string b) {
+      req_.body(std::move(b));
+      return *this;
+    }
+    RequestBuilder& timeout(std::chrono::seconds t) {
+      req_.timeout(t);
+      return *this;
+    }
+
+    template <typename CompletionToken>
+    auto get(CompletionToken&& token) {
+      return perform(Request::Method::GET,
+                     std::forward<CompletionToken>(token));
+    }
+    template <typename CompletionToken>
+    auto post(CompletionToken&& token) {
+      return perform(Request::Method::POST,
+                     std::forward<CompletionToken>(token));
+    }
+    template <typename CompletionToken>
+    auto put(CompletionToken&& token) {
+      return perform(Request::Method::PUT,
+                     std::forward<CompletionToken>(token));
+    }
+    template <typename CompletionToken>
+    auto del(CompletionToken&& token) {
+      return perform(Request::Method::DEL,
+                     std::forward<CompletionToken>(token));
+    }
+
+   private:
+    template <typename CompletionToken>
+    auto perform(Request::Method m, CompletionToken&& token) {
+      req_.method(m);
+      return client_.async_perform(std::move(req_),
+                                   std::forward<CompletionToken>(token));
+    }
+
+    Client& client_;
+    Request req_;
+  };
+
+  /**
+   * @brief Start a fluent request chain: request(url).body(...).post(token).
+   */
+  RequestBuilder request(std::string url) {
+    return RequestBuilder(*this, std::move(url));
   }
 
   int pending_requests() const { return running_; }

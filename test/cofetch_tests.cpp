@@ -133,6 +133,31 @@ TEST(Local, sequential_chain) {
   EXPECT_TRUE(done);
 }
 
+// The fluent chain: setters chain off client.request() and the HTTP verb
+// fires the transfer.
+TEST(Local, fluent_builder_chain) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  asio::co_spawn(
+      io,
+      [&]() -> asio::awaitable<void> {
+        const auto res = co_await client.request(echo_base() + "/post")
+                             .headers({"x-api-test: fluent"})
+                             .body("b=456")
+                             .timeout(std::chrono::seconds(5))
+                             .post(asio::use_awaitable);
+        EXPECT_TRUE(res.is_ok());
+        EXPECT_NE(std::string::npos, res.data_.find("fluent"));
+        EXPECT_NE(std::string::npos, res.data_.find("b=456"));
+        done = true;
+      },
+      asio::detached);
+  io.run();
+  EXPECT_TRUE(done);
+}
+
 // The .then()-style chain: asio::deferred packages "run this, feed the
 // result to the next request" without coroutines.
 TEST(Local, deferred_then_chain) {
