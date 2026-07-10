@@ -128,12 +128,21 @@ class Request {
     timeout_ = t;
     return *this;
   }
+  /**
+   * @brief Follow HTTP 3xx redirects, at most max hops (the transfer fails
+   * with CURLE_TOO_MANY_REDIRECTS beyond that). Off by default.
+   */
+  Request& follow_redirects(long max = 30) {
+    max_redirects_ = max;
+    return *this;
+  }
 
   std::string url_;
   Method method_ = Method::GET;
   std::vector<std::string> headers_;
   std::string body_;
   std::chrono::seconds timeout_{5};
+  long max_redirects_ = 0;  // 0: do not follow redirects
 };
 
 class Client {
@@ -221,6 +230,10 @@ class Client {
     }
     RequestBuilder& timeout(std::chrono::seconds t) {
       req_.timeout(t);
+      return *this;
+    }
+    RequestBuilder& follow_redirects(long max = 30) {
+      req_.follow_redirects(max);
       return *this;
     }
 
@@ -314,6 +327,10 @@ class Client {
     curl_easy_setopt(eh, CURLOPT_PRIVATE, &*it);
     curl_easy_setopt(eh, CURLOPT_TIMEOUT,
                      static_cast<long>(r.timeout_.count()));
+    // Always set: clears the previous transfer's values on pooled handles.
+    curl_easy_setopt(eh, CURLOPT_FOLLOWLOCATION,
+                     r.max_redirects_ != 0 ? 1L : 0L);
+    curl_easy_setopt(eh, CURLOPT_MAXREDIRS, r.max_redirects_);
 
     curl_slist* chunk = nullptr;
     for (const auto& header : r.headers_) {

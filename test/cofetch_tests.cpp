@@ -306,6 +306,51 @@ TEST(Local, inflight_dropped_on_destruction) {
   EXPECT_FALSE(invoked);
 }
 
+TEST(Local, redirects_not_followed_by_default) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  auto fut = client.async_get(echo_base() + "/redirect/2", asio::use_future);
+  io.run();
+  const Response res = fut.get();  // transport ok, 302 passed through
+  EXPECT_FALSE(res.is_ok());
+  EXPECT_EQ(302, res.http_code_);
+}
+
+TEST(Local, follow_redirects_lands_on_target) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  client.request(echo_base() + "/redirect/2")
+      .follow_redirects()
+      .get([&](std::error_code ec, Response res) {
+        EXPECT_FALSE(ec);
+        EXPECT_TRUE(res.is_ok());
+        EXPECT_NE(std::string::npos, res.data_.find("\"/get\""));
+        done = true;
+      });
+  io.run();
+  EXPECT_TRUE(done);
+}
+
+TEST(Local, too_many_redirects_is_transport_error) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  client.request(echo_base() + "/redirect/3")
+      .follow_redirects(1)
+      .get([&](std::error_code ec, Response res) {
+        EXPECT_EQ(static_cast<int>(CURLE_TOO_MANY_REDIRECTS), ec.value());
+        EXPECT_TRUE(ec.category() == cofetch::curl_category());
+        EXPECT_FALSE(res.is_ok());
+        done = true;
+      });
+  io.run();
+  EXPECT_TRUE(done);
+}
+
 TEST(Local, response_defaults_and_error_text) {
   const Response res;
   EXPECT_FALSE(res.is_ok());  // http_code_ 0 is not a 2xx

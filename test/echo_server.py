@@ -4,6 +4,7 @@
 Endpoints:
   ANY /status/<code>  -> responds with that HTTP status
   ANY /delay/<secs>   -> sleeps up to 10s, then echoes
+  ANY /redirect/<n>   -> 302-hops n times, landing on /get
   ANY <path>          -> 200 with JSON echo of method/url/headers/body
 """
 import argparse
@@ -21,6 +22,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _respond(self):
         body = self._read_body()
+        if self.path.startswith("/redirect/"):
+            n = int(self.path.rsplit("/", 1)[1])
+            target = "/get" if n <= 1 else "/redirect/%d" % (n - 1)
+            self.send_response(302)
+            self.send_header("Location", target)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if self.path.startswith("/delay/"):
             time.sleep(min(float(self.path.rsplit("/", 1)[1]), 10.0))
         if self.path.startswith("/status/"):
