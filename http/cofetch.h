@@ -137,6 +137,7 @@ class Client {
    * io_context first.
    */
   ~Client() {
+    *alive_ = false;
     timer_.cancel();
     for (auto& [fd, state] : sockets_) {
       std::error_code ignored;
@@ -277,10 +278,11 @@ class Client {
     CURL* eh = nullptr;
     if (pool_.empty()) {
       eh = curl_easy_init();
-    } else {
+      configure_handle(eh);
+    }  // pooled handles keep their static options; no curl_easy_reset
+    else {
       eh = pool_.back();
       pool_.pop_back();
-      curl_easy_reset(eh);
     }
 
     transfers_.emplace_front(eh, std::move(h));
@@ -290,12 +292,51 @@ class Client {
 
     curl_easy_setopt(eh, CURLOPT_URL, r.url_.c_str());
     curl_easy_setopt(eh, CURLOPT_WRITEDATA, &*it);
-    curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, body_write_cb);
     curl_easy_setopt(eh, CURLOPT_HEADERDATA, &it->header_buffer);
-    curl_easy_setopt(eh, CURLOPT_HEADERFUNCTION, write_cb);
     curl_easy_setopt(eh, CURLOPT_PRIVATE, &*it);
     curl_easy_setopt(eh, CURLOPT_TIMEOUT,
                      static_cast<long>(r.timeout_.count()));
+
+    curl_slist* chunk = nullptr;
+    for (const auto& header : r.headers_) {
+      chunk = curl_slist_append(chunk, header.c_str());
+    }
+    // Always set: clears the previous transfer's list on pooled handles.
+    curl_easy_setopt(eh, CURLOPT_HTTPHEADER, chunk);
+    it->headers = chunk;
+
+    switch (r.method_) {
+      case Request::Method::GET:
+        curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, nullptr);
+        curl_easy_setopt(eh, CURLOPT_HTTPGET, 1L);
+        break;
+      case Request::Method::POST:
+        curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, nullptr);
+        curl_easy_setopt(eh, CURLOPT_POST, 1L);
+        set_body(*it);
+        break;
+      case Request::Method::PUT:
+        curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_easy_setopt(eh, CURLOPT_POST, 1L);
+        set_body(*it);
+        break;
+      case Request::Method::DEL:
+        curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, "DELETE");
+        curl_easy_setopt(eh, CURLOPT_POST, 1L);
+        set_body(*it);
+        break;
+    }
+
+    // curl schedules the kickstart itself through the timer callback.
+    curl_multi_add_handle(multi_, eh);
+  }
+
+  // Request-independent options, set once per easy handle. Everything a
+  // transfer can vary must be (re)set in start() — pooled handles are
+  // reused without curl_easy_reset.
+  void configure_handle(CURL* eh) {
+    curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, body_write_cb);
+    curl_easy_setopt(eh, CURLOPT_HEADERFUNCTION, write_cb);
     curl_easy_setopt(eh, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(eh, CURLOPT_MAXLIFETIME_CONN, 30L);
     // "" advertises every decoder curl was built with (gzip, br, ...).
@@ -308,36 +349,6 @@ class Client {
     curl_easy_setopt(eh, CURLOPT_OPENSOCKETDATA, this);
     curl_easy_setopt(eh, CURLOPT_CLOSESOCKETFUNCTION, close_socket_cb);
     curl_easy_setopt(eh, CURLOPT_CLOSESOCKETDATA, this);
-
-    if (!r.headers_.empty()) {
-      curl_slist* chunk = nullptr;
-      for (const auto& header : r.headers_) {
-        chunk = curl_slist_append(chunk, header.c_str());
-      }
-      curl_easy_setopt(eh, CURLOPT_HTTPHEADER, chunk);
-      it->headers = chunk;
-    }
-
-    switch (r.method_) {
-      case Request::Method::GET:
-        curl_easy_setopt(eh, CURLOPT_HTTPGET, 1L);
-        break;
-      case Request::Method::POST:
-        curl_easy_setopt(eh, CURLOPT_POST, 1L);
-        set_body(*it);
-        break;
-      case Request::Method::PUT:
-        curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, "PUT");
-        set_body(*it);
-        break;
-      case Request::Method::DEL:
-        curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, "DELETE");
-        set_body(*it);
-        break;
-    }
-
-    // curl schedules the kickstart itself through the timer callback.
-    curl_multi_add_handle(multi_, eh);
   }
 
   void set_body(Transfer& t) {
@@ -419,15 +430,21 @@ class Client {
       state->read_armed = true;
       state->socket.async_wait(
           asio::ip::tcp::socket::wait_read,
-          [this, w = std::weak_ptr<SocketState>(state),
-           fd](std::error_code ec) { on_event(w, fd, CURL_CSELECT_IN, ec); });
+          asio::bind_allocator(asio::recycling_allocator<void>(),
+                               [this, w = std::weak_ptr<SocketState>(state),
+                                fd](std::error_code ec) {
+                                 on_event(w, fd, CURL_CSELECT_IN, ec);
+                               }));
     }
     if ((state->watch & CURL_POLL_OUT) && !state->write_armed) {
       state->write_armed = true;
       state->socket.async_wait(
           asio::ip::tcp::socket::wait_write,
-          [this, w = std::weak_ptr<SocketState>(state),
-           fd](std::error_code ec) { on_event(w, fd, CURL_CSELECT_OUT, ec); });
+          asio::bind_allocator(asio::recycling_allocator<void>(),
+                               [this, w = std::weak_ptr<SocketState>(state),
+                                fd](std::error_code ec) {
+                                 on_event(w, fd, CURL_CSELECT_OUT, ec);
+                               }));
     }
   }
 
@@ -449,16 +466,46 @@ class Client {
     auto* self = static_cast<Client*>(userp);
     if (timeout_ms < 0) {
       self->timer_.cancel();
+      self->timer_armed_ = false;
       return 0;
     }
-    self->timer_.expires_after(std::chrono::milliseconds(timeout_ms));
-    self->timer_.async_wait([self](std::error_code ec) {
-      if (ec) return;  // rescheduled or canceled
-      curl_multi_socket_action(self->multi_, CURL_SOCKET_TIMEOUT, 0,
-                               &self->running_);
-      self->check_completions();
-    });
+    if (timeout_ms == 0) {
+      // "Act as soon as possible" — the common per-transfer kick. A plain
+      // post (deduplicated) is much cheaper than rescheduling the timer,
+      // and we may not call curl back from inside its own callback.
+      if (!self->kick_pending_) {
+        self->kick_pending_ = true;
+        asio::post(self->io_,
+                   asio::bind_allocator(asio::recycling_allocator<void>(),
+                                        [self, alive = self->alive_] {
+                                          if (!*alive) return;
+                                          self->kick_pending_ = false;
+                                          self->kick();
+                                        }));
+      }
+      return 0;
+    }
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(timeout_ms);
+    // A pending wait that fires no later than the new deadline is good
+    // enough: a kick() finding nothing due is a cheap no-op, while
+    // rescheduling reprograms the timer every time.
+    if (self->timer_armed_ && self->timer_.expiry() <= deadline) return 0;
+    self->timer_.expires_at(deadline);
+    self->timer_armed_ = true;
+    self->timer_.async_wait(
+        asio::bind_allocator(asio::recycling_allocator<void>(),
+                             [self, alive = self->alive_](std::error_code ec) {
+                               if (ec || !*alive) return;
+                               self->timer_armed_ = false;
+                               self->kick();
+                             }));
     return 0;
+  }
+
+  void kick() {
+    curl_multi_socket_action(multi_, CURL_SOCKET_TIMEOUT, 0, &running_);
+    check_completions();
   }
 
   void check_completions() {
@@ -488,11 +535,10 @@ class Client {
       const std::error_code ec = curl_code == CURLE_OK
                                      ? std::error_code{}
                                      : make_error_code(curl_code);
-      auto ex = asio::get_associated_executor(handler, io_.get_executor());
-      asio::dispatch(
-          ex, [h = std::move(handler), ec, r = std::move(res)]() mutable {
-            std::move(h)(ec, std::move(r));
-          });
+      // Single-threaded by contract: the handler's executor is this
+      // io_context, where we already are — invoke without the
+      // type-erased dispatch hop.
+      std::move(handler)(ec, std::move(res));
     }
   }
 
@@ -503,6 +549,11 @@ class Client {
   std::list<Transfer> transfers_;
   std::vector<CURL*> pool_;
   int running_ = 0;
+  bool kick_pending_ = false;
+  bool timer_armed_ = false;
+  // Outlives the client inside posted/timed kicks: they bail out when the
+  // client is gone instead of touching a destroyed multi handle.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
 }  // namespace cofetch
