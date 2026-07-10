@@ -78,7 +78,10 @@ Prefer a plain value? `cofetch::Request` holds the same fields and fires later v
 
 ## Installation
 
-Requirements: a C++17 compiler (the `co_await` interface needs C++20), libcurl ≥ 7.80 (dev headers), and [standalone ASIO](https://github.com/chriskohlhoff/asio), or Boost.Asio, via `-DCOFETCH_USE_BOOST_ASIO=ON` (`cofetch::error_code` then follows the flavor: `std::` or `boost::system::`).
+Requirements:
+- libcurl ≥ 7.80 (dev headers), 
+- C++17 compiler (the `co_await` interface needs C++20)
+- [ASIO](https://github.com/chriskohlhoff/asio) or Boost.Asio, via `-DCOFETCH_USE_BOOST_ASIO=ON`
 
 ### CMake (FetchContent)
 
