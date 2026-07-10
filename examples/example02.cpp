@@ -11,9 +11,9 @@ asio::awaitable<void> demo(cofetch::Client& client) {
       "https://fapi.binance.com/fapi/v1/time", asio::use_awaitable);
   cout << "server time: " << time_res.data_ << "\n";
 
-  const auto echo = co_await client.async_post("https://postman-echo.com/post",
-                                               "prev=" + time_res.data_,
-                                               asio::use_awaitable);
+  const auto echo =
+      co_await client.async_post("https://postman-echo.com/post",
+                                 "prev=" + time_res.data_, asio::use_awaitable);
   cout << "echo ok: " << echo.is_ok() << " (http " << echo.http_code_ << ")\n";
 }
 

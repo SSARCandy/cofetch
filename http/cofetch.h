@@ -346,15 +346,15 @@ class Client {
       state->read_armed = true;
       state->socket.async_wait(
           asio::ip::tcp::socket::wait_read,
-          [this, w = std::weak_ptr<SocketState>(state), fd](
-              std::error_code ec) { on_event(w, fd, CURL_CSELECT_IN, ec); });
+          [this, w = std::weak_ptr<SocketState>(state),
+           fd](std::error_code ec) { on_event(w, fd, CURL_CSELECT_IN, ec); });
     }
     if ((state->watch & CURL_POLL_OUT) && !state->write_armed) {
       state->write_armed = true;
       state->socket.async_wait(
           asio::ip::tcp::socket::wait_write,
-          [this, w = std::weak_ptr<SocketState>(state), fd](
-              std::error_code ec) { on_event(w, fd, CURL_CSELECT_OUT, ec); });
+          [this, w = std::weak_ptr<SocketState>(state),
+           fd](std::error_code ec) { on_event(w, fd, CURL_CSELECT_OUT, ec); });
     }
   }
 
@@ -364,8 +364,7 @@ class Client {
     // below, which may close this very socket via close_socket_cb.
     const auto state = weak.lock();
     if (!state) return;
-    (flag == CURL_CSELECT_IN ? state->read_armed : state->write_armed) =
-        false;
+    (flag == CURL_CSELECT_IN ? state->read_armed : state->write_armed) = false;
     if (ec == asio::error::operation_aborted) return;
     curl_multi_socket_action(multi_, fd, ec ? CURL_CSELECT_ERR : flag,
                              &running_);
@@ -413,13 +412,14 @@ class Client {
       }
       transfers_.erase(t->self);
 
-      const std::error_code ec =
-          curl_code == CURLE_OK ? std::error_code{} : make_error_code(curl_code);
+      const std::error_code ec = curl_code == CURLE_OK
+                                     ? std::error_code{}
+                                     : make_error_code(curl_code);
       auto ex = asio::get_associated_executor(handler, io_.get_executor());
-      asio::dispatch(ex, [h = std::move(handler), ec,
-                          r = std::move(res)]() mutable {
-        std::move(h)(ec, std::move(r));
-      });
+      asio::dispatch(
+          ex, [h = std::move(handler), ec, r = std::move(res)]() mutable {
+            std::move(h)(ec, std::move(r));
+          });
     }
   }
 
