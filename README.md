@@ -3,21 +3,38 @@
 > `await fetch()` for modern C++ — an async HTTP client for event-loop
 > applications, built on libcurl's multi interface and standalone ASIO.
 
-[![CI](https://github.com/SSARCandy/cofetch/actions/workflows/ci.yml/badge.svg)](https://github.com/SSARCandy/cofetch/actions/workflows/ci.yml)
+Dependent requests **chain like promises**. The JavaScript you write
+every day:
 
-One implementation, three calling styles, zero threads spawned behind
-your back:
+```js
+const user  = await fetch(api + "/user");
+const posts = await fetch(api + "/posts", { method: "POST", body: user.body });
+```
+
+and its cofetch equivalent — same shape, C++20 coroutine:
 
 ```cpp
-// coroutine — reads like fetch()
-auto res = co_await client.async_get(url, asio::use_awaitable);
-
-// plain callback — zero-overhead hot path
-client.async_get(url, [](std::error_code ec, cofetch::Response res) { /*...*/ });
-
-// std::future — bridge to blocking code
-auto fut = client.async_get(url, asio::use_future);
+const auto user  = co_await client.async_get(api + "/user", asio::use_awaitable);
+const auto posts = co_await client.async_post(api + "/posts", user.data_,
+                                              asio::use_awaitable);
 ```
+
+Prefer classic `.then()` chains, or can't use coroutines? The same
+pipeline builds from `asio::deferred` — still one thread, still no
+callback pyramid:
+
+```cpp
+auto chain = client.async_get(api + "/user", asio::deferred)(
+    asio::deferred([&](std::error_code ec, cofetch::Response user) {
+      return client.async_post(api + "/posts", user.data_, asio::deferred);
+    }));
+std::move(chain)([](std::error_code ec, cofetch::Response posts) { /*...*/ });
+```
+
+Every ASIO completion token works: plain callbacks for the
+zero-overhead hot path, `co_await` for flows, `asio::deferred` for
+`.then()`-style chains, `std::future` to bridge blocking code — one
+implementation behind all of them.
 
 ## Why cofetch
 

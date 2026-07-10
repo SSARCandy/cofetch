@@ -1,7 +1,7 @@
 #pragma once
 // cofetch: async HTTP client on top of libcurl's multi interface and ASIO.
 //
-// One implementation, three calling styles via ASIO completion tokens:
+// One implementation, any ASIO completion token:
 //
 //   // coroutine ("await fetch()"):
 //   auto res = co_await client.async_get(url, asio::use_awaitable);
@@ -11,6 +11,9 @@
 //
 //   // std::future:
 //   auto fut = client.async_get(url, asio::use_future);
+//
+//   // .then()-style chaining (see test/cofetch_tests.cpp):
+//   client.async_get(url, asio::deferred)(asio::deferred(next))(handler);
 //
 // Drive it with io_context::run(), or io_context::poll() in a busy loop.
 // Not thread-safe: run the client and its io_context on one thread.

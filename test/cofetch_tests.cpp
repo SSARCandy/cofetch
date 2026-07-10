@@ -133,6 +133,31 @@ TEST(Local, sequential_chain) {
   EXPECT_TRUE(done);
 }
 
+// The .then()-style chain: asio::deferred packages "run this, feed the
+// result to the next request" without coroutines.
+TEST(Local, deferred_then_chain) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+
+  auto chain = client.async_get(echo_base() + "/get?step=1", asio::deferred)(
+      asio::deferred([&](std::error_code ec, Response first) {
+        EXPECT_FALSE(ec);
+        EXPECT_NE(std::string::npos, first.data_.find("step=1"));
+        return client.async_post(echo_base() + "/post", "prev=step1",
+                                 asio::deferred);
+      }));
+
+  std::move(chain)([&](std::error_code ec, Response second) {
+    EXPECT_FALSE(ec);
+    EXPECT_NE(std::string::npos, second.data_.find("prev=step1"));
+    done = true;
+  });
+  io.run();
+  EXPECT_TRUE(done);
+}
+
 TEST(Local, callback_busy_poll) {
   COFETCH_REQUIRE_ECHO();
   asio::io_context io;
