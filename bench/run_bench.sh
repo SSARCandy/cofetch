@@ -43,6 +43,7 @@ ${BIN}/bench_httplib throughput "${URL}" "${TOTAL}" "${NPROC}"
 # Chain: sequential dependent requests, one thread, one in flight.
 ${BIN}/bench_cofetch chain "${URL}" "${CHAIN}"
 COFETCH_BENCH_CB=1 ${BIN}/bench_cofetch chain "${URL}" "${CHAIN}"
+COFETCH_BENCH_CB=1 COFETCH_BENCH_POLL=1 ${BIN}/bench_cofetch chain "${URL}" "${CHAIN}"
 ${BIN}/bench_epoll   chain "${URL}" "${CHAIN}"
 ${BIN}/bench_cpr     chain "${URL}" "${CHAIN}"
 ${BIN}/bench_httplib chain "${URL}" "${CHAIN}"

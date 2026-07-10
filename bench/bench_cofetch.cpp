@@ -18,7 +18,7 @@ namespace {
 
 int run_throughput(const std::string& url, int total, int concurrency,
                    bool busy_poll) {
-  asio::io_context io;
+  asio::io_context io(1);
   cofetch::Client client(io);
   int failed = 0;
   int in_flight = 0;
@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
   }
 
   if (args.scenario == "chain") {
-    asio::io_context io;
+    asio::io_context io(1);
     cofetch::Client client(io);
     int failed = 0;
     const bool callbacks = std::getenv("COFETCH_BENCH_CB") != nullptr;
@@ -95,8 +95,13 @@ int main(int argc, char** argv) {
         });
       };
       next();
-      io.run();
-      bench::report("cofetch-cb", args, timer.seconds(), failed);
+      if (busy_poll) {
+        while (remaining > 0) io.poll();
+      } else {
+        io.run();
+      }
+      bench::report(busy_poll ? "cofetch-cb-poll" : "cofetch-cb", args,
+                    timer.seconds(), failed);
       return failed != 0;
     }
     asio::co_spawn(

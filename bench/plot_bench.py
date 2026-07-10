@@ -38,8 +38,7 @@ PANELS = [
         (("cpr-threads", "throughput", 20), "cpr · 20 threads", RIVAL),
     ]),
     ("Sequential chain — 2,000 dependent requests", [
-        (("cofetch-cb", "chain", 1), "cofetch · callbacks", COFETCH),
-        (("cofetch-coro", "chain", 1), "cofetch · coroutine", COFETCH),
+        (("cofetch-cb-poll", "chain", 1), "cofetch · busy-poll", COFETCH),
         (("cpp-httplib", "chain", 1), "cpp-httplib", RIVAL),
         (("cpr", "chain", 1), "cpr", RIVAL),
     ]),

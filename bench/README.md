@@ -50,43 +50,57 @@ dominates — run with a remote nginx if you want to see that.
 ## Results — 2026-07-10
 
 Debian 13 (WSL2, 20 logical cores), gcc 14 `-O3`, libcurl 8.14,
-asio 1.38. Raw data: `results.csv`.
+asio 1.38. Raw data: `results.csv`. WSL run-to-run variance is
+roughly ±10%; interleaved re-runs confirm the ordering is stable.
 
 **One thread each, 20,000 GETs**
 
 | client | in flight | time | req/s |
 |---|---:|---:|---:|
-| cofetch (callbacks, `run()`) | 100 | 1.30 s | 15,388 |
-| cofetch (callbacks, busy-`poll()`) | 100 | 1.27 s | 15,794 |
-| cpr (sync session) | 1 | 1.93 s | 10,367 |
-| cpp-httplib (sync client) | 1 | 1.52 s | 13,186 |
-| epoll baseline (internal reference) | 100 | 1.04 s | 19,304 |
+| cofetch (callbacks, busy-`poll()`) | 100 | 1.10 s | 18,240 |
+| cofetch (callbacks, `run()`) | 100 | 1.15 s | 17,412 |
+| cpr (sync session) | 1 | 1.98 s | 10,127 |
+| cpp-httplib (sync client) | 1 | 1.55 s | 12,889 |
+| epoll baseline (internal reference) | 100 | 0.99 s | 20,270 |
 
 **One thread per core (20 threads each), 20,000 GETs**
 
 | client | threads | time | req/s |
 |---|---:|---:|---:|
-| cofetch (one event loop per core) | 20 | 0.10 s | 200,594 |
-| cpr (thread pool) | 20 | 0.17 s | 120,055 |
-| cpp-httplib (thread pool) | 20 | 0.16 s | 127,565 |
+| cofetch (one event loop per core) | 20 | 0.12 s | 166,646 |
+| cpr (thread pool) | 20 | 0.16 s | 122,122 |
+| cpp-httplib (thread pool) | 20 | 0.16 s | 127,333 |
 
 **Sequential chain, 2,000 dependent requests, one thread**
 
 | client | time | req/s |
 |---|---:|---:|
-| cofetch (callback chain) | 0.19 s | 10,466 |
-| cofetch (coroutine chain) | 0.20 s | 10,254 |
-| cpr | 0.20 s | 10,224 |
-| cpp-httplib | 0.16 s | 12,604 |
-| epoll baseline (internal reference) | 0.13 s | 15,487 |
+| cofetch (callbacks, busy-`poll()`) | 0.14 s | 14,804 |
+| cofetch (callbacks, `run()`) | 0.18 s | 11,116 |
+| cofetch (coroutine, `run()`) | 0.19 s | 10,547 |
+| cpr | 0.20 s | 10,209 |
+| cpp-httplib | 0.16 s | 12,761 |
+| epoll baseline (internal reference) | 0.13 s | 15,566 |
+
+The chain scenario is per-request latency. In blocking `run()` mode a
+reactor pays one kernel sleep/wake per request that a raw blocking
+`recv()` (cpp-httplib) does not — busy-poll mode removes it, which is
+exactly what that mode is for. The README chart uses busy-poll for the
+chain panel because it is cofetch's documented latency mode.
 
 ## Notes for maintainers
 
 - The epoll baseline is the performance ceiling cofetch must not drift
-  from. Current gap on loopback: ~25% throughput, ~48% chain — the cost
-  of the portable ASIO reactor (per-event `async_wait` re-arm, executor
-  dispatch), not of coroutines (callback vs coroutine chain differ ~2%).
+  from. After the 2026-07-10 optimizations (static curl options set
+  once per pooled handle instead of reset+reapply, curl's 0 ms timer
+  kicks turned into a deduplicated `asio::post`, timer reschedules
+  skipped when a pending expiry is early enough, reactor handlers on
+  `asio::recycling_allocator`, completion invoked without the
+  type-erased dispatch hop) the loopback gap is ~14% throughput and
+  ~5% chain (busy-poll). Callback vs coroutine chains differ ~5%.
+- Construct the io_context as `asio::io_context io(1)` in
+  single-threaded apps — the concurrency hint removes internal locking.
 - asio's io_uring backend (`-DASIO_HAS_IO_URING -DASIO_DISABLE_EPOLL`,
-  link `-luring`) recovers about half the throughput gap (+14%,
-  measured on WSL2 kernel 5.15). Closing the rest needs persistent
-  socket registration — see ROADMAP.
+  link `-luring`) was measured +14% throughput before these
+  optimizations; re-measure if pursuing. Persistent socket registration
+  is the remaining idea — see ROADMAP.

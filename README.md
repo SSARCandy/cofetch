@@ -48,8 +48,10 @@ Same workload for every client — 20,000 GETs against a local nginx.
 [cpr](https://github.com/libcpr/cpr) and
 [cpp-httplib](https://github.com/yhirose/cpp-httplib) are synchronous
 (one request per thread); cofetch keeps 100 in flight on a single
-thread, and with one event loop per core it outruns equal-sized thread
-pools by ~60%.
+thread, and wins every scenario: **+35%** single-thread throughput
+over the fastest sync client, **+31%** with one event loop per core
+against equal-sized thread pools, **+16%** on sequential chains driven
+from a busy-poll loop.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark-dark.svg">
