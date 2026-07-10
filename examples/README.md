@@ -14,7 +14,7 @@ endpoints, so they need network access to run.
 | [example_errors.cpp](example_errors.cpp) | transport errors vs HTTP error statuses |
 | [example_cancellation.cpp](example_cancellation.cpp) | a time budget per request with `asio::cancel_after` |
 | [example_redirects.cpp](example_redirects.cpp) | 3xx as-is by default; `follow_redirects()` to chase them |
-| [example_http2.cpp](example_http2.cpp) | concurrent requests multiplexed over one HTTP/2 connection |
+| [example_http2.cpp](example_http2.cpp) | requests multiplexed over one HTTP/2 connection; opting a request back to HTTP/1.1 |
 | [example_tls.cpp](example_tls.cpp) | https out of the box; TLS knobs via the `.curl()` escape hatch |
 | [example_compression.cpp](example_compression.cpp) | gzip/brotli responses arrive already decoded |
 | [example_keepalive.cpp](example_keepalive.cpp) | connection pooling: the second request skips the handshake |
