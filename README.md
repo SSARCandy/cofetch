@@ -60,6 +60,11 @@ over the fastest sync client, **+31%** with one event loop per core
 against equal-sized thread pools, **+16%** on sequential chains driven
 from a busy-poll loop.
 
+Loopback hides what latency does to a sync client. Inject **10 ms of
+network RTT** (`tc netem`) and one cofetch thread sustains ~9,400
+req/s — **~100×** a single-threaded sync client, and level with what
+cpr and cpp-httplib need a 100-thread pool to reach.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark-dark.svg">
   <img alt="cofetch benchmark results" src="docs/benchmark-light.svg">

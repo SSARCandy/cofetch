@@ -28,6 +28,19 @@ python3 bench/plot_bench.py bench/results.csv -o docs    # regenerate README cha
 - `plot_bench.py` needs matplotlib (`sudo apt install python3-matplotlib`)
   and writes `docs/benchmark-{light,dark}.svg`.
 
+### RTT scenario (Linux, needs root)
+
+```bash
+bench/run_netem.sh 10 | tail -n +2 >> bench/results.csv    # 10 ms RTT
+python3 bench/plot_bench.py bench/results.csv -o docs
+```
+
+`run_netem.sh [rtt_ms]` shapes loopback with `tc netem` (delay rtt/2
+each direction), reruns the tier-1 comparison plus 100-thread sync
+pools, and tags rows `throughput-rtt<ms>`. Request counts scale with
+RTT so each run holds ~10 s of steady state. The plot script skips
+the RTT panel when those rows are absent.
+
 Driver knobs (set as env vars for `bench_cofetch`):
 
 - `COFETCH_BENCH_POLL=1` — busy-poll `io_context::poll()` instead of `run()`
@@ -42,10 +55,11 @@ Driver knobs (set as env vars for `bench_cofetch`):
   concurrency; cofetch keeps them in flight on one thread.
 - **chain** — sequential dependent requests, one in flight. This is
   per-request latency; concurrency cannot hide it.
-
-Benchmarking is against local nginx on loopback: zero network latency,
-so the numbers isolate client CPU overhead. On a real network, RTT
-dominates — run with a remote nginx if you want to see that.
+- **throughput-rtt\<ms\>** — tier 1 again, with real round-trip
+  latency injected on loopback by `tc netem`. Loopback RTT≈0 actually
+  flatters sync clients (every request returns instantly, so the race
+  is pure CPU); with RTT, a sync thread parks for a full round trip
+  per request while an async client keeps its pipeline full.
 
 ## Results — 2026-07-10
 
@@ -62,6 +76,30 @@ roughly ±10%; interleaved re-runs confirm the ordering is stable.
 | cpr (sync session) | 1 | 1.98 s | 10,127 |
 | cpp-httplib (sync client) | 1 | 1.55 s | 12,889 |
 | epoll baseline (internal reference) | 100 | 0.99 s | 20,270 |
+
+**With network RTT (tc netem on loopback), one thread each unless noted**
+
+At 10 ms RTT (measured 10.2 ms):
+
+| client | threads | in flight | req/s |
+|---|---:|---:|---:|
+| cofetch | 1 | 100 | 9,353 |
+| cpp-httplib (100-thread pool) | 100 | 100 | 9,571 |
+| cpr (100-thread pool) | 100 | 100 | 9,345 |
+| cpp-httplib (sync) | 1 | 1 | 95 |
+| cpr (sync) | 1 | 1 | 94 |
+
+(100-in-flight runs do 20,000 GETs; sync runs do 1,000 — counts scale
+with the RTT ceiling so every run measures ~10 s of steady state.)
+
+At 50 ms RTT: cofetch 1,819 req/s on one thread; sync clients 20 req/s
+each; 100-thread pools ~1,918.
+
+Throughput here is pinned by in-flight/RTT (100/10 ms = 10,000 req/s
+ceiling), and that is the point: one cofetch thread runs ~98× ahead of
+a single-threaded sync client and ties a 100-thread pool, because it
+multiplexes 100 requests where sync burns an OS thread per in-flight
+request.
 
 **One thread per core (20 threads each), 20,000 GETs**
 
@@ -103,6 +141,19 @@ chain panel because it is cofetch's documented latency mode.
 - asio's io_uring backend (`-DASIO_HAS_IO_URING -DASIO_DISABLE_EPOLL`,
   link `-luring`) was measured +14% throughput before these
   optimizations; re-measure if pursuing.
+- Stock WSL2 kernels ship without `sch_netem`, with
+  `CONFIG_MODVERSIONS=y` (so modules need matching symbol CRCs) and no
+  `__crc_*` symbols in kallsyms. What worked (2026-07-10): clone
+  [microsoft/WSL2-Linux-Kernel](https://github.com/microsoft/WSL2-Linux-Kernel)
+  at the `linux-msft-wsl-$(uname -r | cut -d- -f1)` tag, seed `.config`
+  from `zcat /proc/config.gz`, `scripts/config --module NET_SCH_NETEM`,
+  `touch .scmversion` (else vermagic grows a `+`), then a **full**
+  `make -j$(nproc)` — `modules_prepare` alone leaves no `Module.symvers`
+  and the CRC check rejects the module (`--force` included). Keep
+  `DEBUG_INFO_BTF` as in the running config (its fields change
+  `struct module`, i.e. the `module_layout` CRC), strip the module's
+  own BTF before loading (`objcopy --remove-section=.BTF`), `insmod`.
+  Lasts until WSL shuts down.
 - Persistent socket registration was tried and **rejected** (2026-07-10):
   a client-owned epoll set with the epoll fd registered in asio measured
   −8% throughput and −3% chain vs the one-shot path. asio's epoll

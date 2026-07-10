@@ -13,3 +13,13 @@ cofetch-cb-poll,chain,2000,1,0.135,14804,0
 epoll-baseline,chain,2000,1,0.128,15566,0
 cpr,chain,2000,1,0.196,10209,0
 cpp-httplib,chain,2000,1,0.157,12761,0
+cofetch,throughput-rtt10,20000,100,2.138,9353,0
+cpp-httplib-threads,throughput-rtt10,1000,1,10.531,95,0
+cpr-threads,throughput-rtt10,1000,1,10.587,94,0
+cpp-httplib-threads,throughput-rtt10,20000,100,2.090,9571,0
+cpr-threads,throughput-rtt10,20000,100,2.140,9345,0
+cofetch,throughput-rtt50,4000,100,2.199,1819,0
+cpp-httplib-threads,throughput-rtt50,200,1,10.164,20,0
+cpr-threads,throughput-rtt50,200,1,10.174,20,0
+cpp-httplib-threads,throughput-rtt50,4000,100,2.085,1918,0
+cpr-threads,throughput-rtt50,4000,100,2.086,1917,0

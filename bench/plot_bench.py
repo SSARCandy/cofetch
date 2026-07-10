@@ -30,6 +30,17 @@ PANELS = [
          RIVAL),
         (("cpr-threads", "throughput", 1), "cpr · sync", RIVAL),
     ]),
+    ("Same, with 10 ms of network RTT (tc netem)", [
+        (("cofetch", "throughput-rtt10", 100), "cofetch · 100 in flight",
+         COFETCH),
+        (("cpp-httplib-threads", "throughput-rtt10", 100),
+         "cpp-httplib · 100 threads", RIVAL),
+        (("cpr-threads", "throughput-rtt10", 100), "cpr · 100 threads",
+         RIVAL),
+        (("cpp-httplib-threads", "throughput-rtt10", 1),
+         "cpp-httplib · sync", RIVAL),
+        (("cpr-threads", "throughput-rtt10", 1), "cpr · sync", RIVAL),
+    ]),
     ("One thread per core (20) — 20,000 GETs", [
         (("cofetch-20loops", "throughput", 100), "cofetch · 20 loops",
          COFETCH),
@@ -67,13 +78,17 @@ def render(rows, path, dark, transparent=True):
         "ytick.color": fg,
     })
 
-    heights = [len(bars) for _, bars in PANELS]
+    # Skip panels whose data is missing (e.g. the netem scenario needs
+    # a separate run_netem.sh run appended to the CSV).
+    panels = [(t, b) for t, b in PANELS
+              if all(key in rows for key, _, _ in b)]
+    heights = [len(bars) for _, bars in panels]
     fig, axes = plt.subplots(
-        len(PANELS), 1,
-        figsize=(8.5, 0.42 * sum(heights) + 1.0 * len(PANELS)),
+        len(panels), 1,
+        figsize=(8.5, 0.42 * sum(heights) + 1.0 * len(panels)),
         gridspec_kw={"height_ratios": heights, "hspace": 0.55})
 
-    for ax, (title, bars) in zip(axes, PANELS):
+    for ax, (title, bars) in zip(axes, panels):
         bars = bars[::-1]  # barh draws bottom-up; keep declared order on top
         labels = [label for _, label, _ in bars]
         values = [rows[key] for key, _, _ in bars]
