@@ -1,0 +1,14 @@
+name,scenario,total,concurrency,seconds,req_per_sec,failed
+cofetch,throughput,20000,100,1.300,15388,0
+cofetch-poll,throughput,20000,100,1.266,15794,0
+epoll-baseline,throughput,20000,100,1.036,19304,0
+cpr-threads,throughput,20000,1,1.929,10367,0
+cpp-httplib-threads,throughput,20000,1,1.517,13186,0
+cofetch-20loops,throughput,20000,100,0.100,200594,0
+cpr-threads,throughput,20000,20,0.167,120055,0
+cpp-httplib-threads,throughput,20000,20,0.157,127565,0
+cofetch-coro,chain,2000,1,0.195,10254,0
+cofetch-cb,chain,2000,1,0.191,10466,0
+epoll-baseline,chain,2000,1,0.129,15487,0
+cpr,chain,2000,1,0.196,10224,0
+cpp-httplib,chain,2000,1,0.159,12604,0

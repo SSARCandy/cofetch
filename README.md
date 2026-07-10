@@ -56,38 +56,51 @@ does the **same 20,000 GETs**, so wall-clock time is directly
 comparable. Zero-latency loopback measures client CPU overhead, not
 the network. Reproduce with `bench/run_bench.sh`.
 
-**One thread each.** A sync client drives one request at a time; an
-async client keeps 100 in flight on that same single thread — that is
-the point of async:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark-dark.svg">
+  <img alt="cofetch benchmark results" src="docs/benchmark-light.svg">
+</picture>
+
+A sync client ([cpr](https://github.com/libcpr/cpr),
+[cpp-httplib](https://github.com/yhirose/cpp-httplib)) drives one
+request per thread, so its single-thread bar is serial; cofetch keeps
+100 in flight on that same thread — that is the point of async. With
+one event loop per core, cofetch outruns equal-sized thread pools by
+~60%. The chain scenario is per-request latency; concurrency cannot
+hide it.
+
+<details>
+<summary>Exact numbers</summary>
+
+**One thread each, 20,000 GETs**
 
 | client | in flight | time | req/s |
 |---|---:|---:|---:|
-| **cofetch** (callbacks, `run()`) | 100 | 1.30 s | 15,388 |
-| **cofetch** (callbacks, busy-`poll()`) | 100 | 1.27 s | 15,794 |
-| [cpr](https://github.com/libcpr/cpr) (sync session) | 1 | 1.93 s | 10,367 |
-| [cpp-httplib](https://github.com/yhirose/cpp-httplib) (sync client) | 1 | 1.52 s | 13,186 |
-| *epoll ancestor of cofetch (internal reference)* | 100 | 1.04 s | 19,304 |
+| cofetch (callbacks, `run()`) | 100 | 1.30 s | 15,388 |
+| cofetch (callbacks, busy-`poll()`) | 100 | 1.27 s | 15,794 |
+| cpr (sync session) | 1 | 1.93 s | 10,367 |
+| cpp-httplib (sync client) | 1 | 1.52 s | 13,186 |
+| epoll ancestor (internal reference) | 100 | 1.04 s | 19,304 |
 
-**One thread per core (20 threads each).** cofetch runs one event loop
-per core; the sync libraries get an equal-sized thread pool:
+**One thread per core (20 threads each), 20,000 GETs**
 
 | client | threads | time | req/s |
 |---|---:|---:|---:|
-| **cofetch** (one event loop per core) | 20 | **0.10 s** | **200,594** |
+| cofetch (one event loop per core) | 20 | 0.10 s | 200,594 |
 | cpr (thread pool) | 20 | 0.17 s | 120,055 |
 | cpp-httplib (thread pool) | 20 | 0.16 s | 127,565 |
 
-**Sequential chain.** 2,000 dependent requests, one at a time on one
-thread — this measures per-request latency, and no client can hide it
-with concurrency:
+**Sequential chain, 2,000 dependent requests, one thread**
 
 | client | time | req/s |
 |---|---:|---:|
-| **cofetch** (callback chain) | 0.19 s | 10,466 |
-| **cofetch** (coroutine chain) | 0.20 s | 10,254 |
+| cofetch (callback chain) | 0.19 s | 10,466 |
+| cofetch (coroutine chain) | 0.20 s | 10,254 |
 | cpr | 0.20 s | 10,224 |
 | cpp-httplib | 0.16 s | 12,604 |
-| *epoll ancestor of cofetch (internal reference)* | 0.13 s | 15,487 |
+| epoll ancestor (internal reference) | 0.13 s | 15,487 |
+
+</details>
 
 > [!NOTE]
 > The raw-epoll client cofetch grew out of (kept in `bench/baseline/`) is still 25–50% faster on loopback — the current price of the portable ASIO reactor (per-event re-arm, executor dispatch), not of coroutines (callback and coroutine chains differ by ~2%). An io_uring ASIO backend recovers about half of that gap; closing the rest is on the roadmap. On a real network, milliseconds of RTT dwarf these microseconds — what remains is the thread count you pay: one loop beats a sync client per-thread, and per-core loops beat a 20-thread pool by ~60%.
@@ -176,7 +189,8 @@ Copy `http/cofetch.h`, add asio to your include path, link `libcurl`.
 git submodule update --init          # asio + googletest (dev only)
 ./build.sh -t                        # Debug build + tests + coverage
 ./linter.sh                          # clang-format check (v19 pinned in CI)
-bench/run_bench.sh                   # benchmarks against local nginx
+bench/run_bench.sh | tee bench/results.csv        # bench vs local nginx
+python3 bench/plot_bench.py bench/results.csv -o docs  # regen README charts
 COFETCH_LIVE_TESTS=1 ./build.sh -t   # also run live-network tests
 ./build/examples/example03 run       # reactor tour: run|poll|foreign;
                                      # example03_uring = same code on io_uring
