@@ -20,12 +20,7 @@ http
   });
 ```
 
-Callbacks are the zero-overhead hot path, and any ASIO completion
-token plugs into the same calls — `std::future`, `asio::deferred`,
-`asio::as_tuple`. Cancellation composes the way it does everywhere
-in asio: `asio::cancel_after(2s, token)` aborts an in-flight request.
-On C++20, that includes coroutines: dependent requests in linear
-code, no nesting:
+Callbacks are the zero-overhead hot path, and any ASIO completion token plugs into the same calls — `std::future`, `asio::deferred`, `asio::as_tuple`. Cancellation composes the way it does everywhere in asio: `asio::cancel_after(2s, token)` aborts an in-flight request. On C++20, that includes coroutines: dependent requests in linear code, no nesting:
 
 ```cpp
 const auto user  = co_await http.async_get(api + "/user", asio::use_awaitable);
@@ -34,20 +29,11 @@ const auto posts = co_await http.async_post(api + "/posts", user.data_, asio::us
 
 ## Why cofetch
 
-- **Header-only.** One file, nothing to build — bring libcurl (linked)
-  and ASIO (include path), then `#include <cofetch.h>`.
-- **Chainable syntax.** Build a request with setters, fire it with the
-  HTTP verb — the same chain works with callbacks, futures, or
-  coroutines.
-- **ASIO-native.** Requests run on the `asio::io_context`. Drive it
-  with `run()`, or `poll()` it from a busy loop that must never block
-  (the trading hot path this library grew out of).
-- **libcurl underneath.** HTTP/1.1 and HTTP/2 multiplexing, TLS,
-  compression, connection pooling, redirects. For anything cofetch
-  does not wrap, `.curl([](CURL* h) { ... })` exposes the raw handle
-  per request.
-- **C++17-friendly.** The full API — chains, callbacks, futures,
-  `deferred` — works on C++17; C++20 adds the `co_await` interface.
+- **Header-only.** One file, nothing to build — bring libcurl (linked) and ASIO (include path), then `#include <cofetch.h>`.
+- **Chainable syntax.** Build a request with setters, fire it with the HTTP verb. The same chain works with callbacks, futures, or coroutines.
+- **ASIO-native.** Requests run on the `asio::io_context`. Drive it with `run()`, or `poll()` it from a busy loop that must never block (the trading hot path this library grew out of).
+- **libcurl underneath.** HTTP/1.1 and HTTP/2 multiplexing, TLS, compression, connection pooling, redirects. For anything cofetch does not wrap, `.curl([](CURL* h) { ... })` exposes the raw handle per request.
+- **C++17-friendly.** The full API — chains, callbacks, futures, `deferred` — works on C++17; C++20 adds the `co_await` interface.
 
 ## Benchmarks
 

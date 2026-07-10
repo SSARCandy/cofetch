@@ -10,6 +10,11 @@ add_example(example_future example_future.cpp)
 add_example(example_concurrent example_concurrent.cpp)
 add_example(example_errors example_errors.cpp)
 add_example(example_cancellation example_cancellation.cpp)
+add_example(example_redirects example_redirects.cpp)
+add_example(example_http2 example_http2.cpp)
+add_example(example_tls example_tls.cpp)
+add_example(example_compression example_compression.cpp)
+add_example(example_keepalive example_keepalive.cpp)
 add_example(example_reactors example_reactors.cpp)
 
 # Same source on asio's io_uring reactor, when liburing is around.
