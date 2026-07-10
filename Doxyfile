@@ -1,0 +1,17 @@
+# API reference for the public header. Generate with: doxygen Doxyfile
+# Output: docs/api/html/index.html
+PROJECT_NAME           = cofetch
+PROJECT_BRIEF          = "Chainable, high-performance async HTTP client for C++ event loops"
+INPUT                  = include/cofetch.h
+OUTPUT_DIRECTORY       = docs/api
+GENERATE_LATEX         = NO
+EXTRACT_ALL            = YES
+JAVADOC_AUTOBRIEF      = YES
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = NO
+HTML_COLORSTYLE        = LIGHT
+HTML_EXTRA_STYLESHEET  = vendor/doxygen-awesome-css/doxygen-awesome.css
+HTML_DYNAMIC_SECTIONS  = YES
+HAVE_DOT               = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO

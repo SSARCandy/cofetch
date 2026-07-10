@@ -1,6 +1,8 @@
-# cofetch
+# cofetch: async HTTP client for C++.
 
-> Chainable, high-performance async HTTP client for C++ event loops.
+[![CI](https://github.com/SSARCandy/cofetch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SSARCandy/cofetch/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/SSARCandy/cofetch/graph/badge.svg)](https://codecov.io/gh/SSARCandy/cofetch)
+
 
 Requests **build as a chain** — setters flow off `request()` and the
 HTTP verb fires the transfer, without blocking the thread:

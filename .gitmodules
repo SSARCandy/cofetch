@@ -5,3 +5,7 @@
 	path = vendor/asio
 	url = https://github.com/chriskohlhoff/asio.git
 	shallow = true
+[submodule "vendor/doxygen-awesome-css"]
+	path = vendor/doxygen-awesome-css
+	url = https://github.com/jothepro/doxygen-awesome-css.git
+	shallow = true

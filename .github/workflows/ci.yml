@@ -34,6 +34,50 @@ jobs:
           done
           COFETCH_ECHO=http://127.0.0.1:18089 ./cxx17_smoke
 
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install doxygen
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq doxygen
+      - name: Generate API reference
+        run: doxygen Doxyfile
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-docs
+          path: docs/api/html
+
+  coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install libcurl and gcovr
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libcurl4-openssl-dev gcovr
+      - name: Configure (Debug enables gcov)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCOFETCH_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Run tests against local echo server
+        run: |
+          python3 test/echo_server.py --port 18089 &
+          for _ in $(seq 1 50); do
+            curl -s -o /dev/null http://127.0.0.1:18089/get && break
+            sleep 0.1
+          done
+          COFETCH_ECHO=http://127.0.0.1:18089 ./build/test/all_test
+      - name: Generate coverage report
+        run: gcovr --root . --filter include/ --xml -o coverage.xml build
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   build-and-test:
     strategy:
       fail-fast: false
