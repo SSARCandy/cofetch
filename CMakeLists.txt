@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(cofetch VERSION 0.1.0 LANGUAGES CXX)
+project(cofetch VERSION 0.1.2 LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(COFETCH_TOP_LEVEL ON)
@@ -13,6 +13,9 @@ option(COFETCH_USE_BOOST_ASIO "Build against Boost.Asio instead of standalone as
 option(COFETCH_BUILD_EXAMPLES "Build example programs" ${COFETCH_TOP_LEVEL})
 option(COFETCH_BUILD_TESTS "Build unit tests (needs vendor/googletest)" OFF)
 option(COFETCH_BUILD_BENCH "Build benchmarks (fetches cpr and cpp-httplib)" OFF)
+option(COFETCH_INSTALL "Generate the install target and package config" ${COFETCH_TOP_LEVEL})
+
+include(GNUInstallDirs)
 
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
@@ -20,7 +23,8 @@ find_package(Threads REQUIRED)
 add_library(cofetch INTERFACE)
 add_library(cofetch::cofetch ALIAS cofetch)
 target_include_directories(cofetch INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 # Consumers need C++17; the co_await interface lights up on C++20.
 target_compile_features(cofetch INTERFACE cxx_std_17)
 target_link_libraries(cofetch INTERFACE CURL::libcurl Threads::Threads)
@@ -32,6 +36,31 @@ if(COFETCH_USE_BOOST_ASIO)
 elseif(COFETCH_USE_VENDORED_ASIO)
     target_include_directories(cofetch SYSTEM INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/asio/include>)
+endif()
+
+if(COFETCH_INSTALL)
+    # The installed package never ships the vendored asio: consumers
+    # bring their own (any <asio.hpp> on the include path, or Boost).
+    include(CMakePackageConfigHelpers)
+
+    install(TARGETS cofetch EXPORT cofetch-targets)
+    install(FILES include/cofetch.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(EXPORT cofetch-targets
+        FILE cofetch-targets.cmake
+        NAMESPACE cofetch::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cofetch)
+
+    configure_package_config_file(cmake/cofetch-config.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/cofetch-config.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cofetch)
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/cofetch-config-version.cmake
+        COMPATIBILITY SameMinorVersion
+        ARCH_INDEPENDENT)
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/cofetch-config.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/cofetch-config-version.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cofetch)
 endif()
 
 if(COFETCH_TOP_LEVEL)
