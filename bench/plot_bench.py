@@ -31,12 +31,7 @@ PANELS = [
         (("cpr-threads", "throughput", 1), "cpr · sync", RIVAL),
     ]),
     ("Same, with 10 ms of network RTT (tc netem)", [
-        (("cofetch", "throughput-rtt10", 100), "cofetch · 100 in flight",
-         COFETCH),
-        (("cpp-httplib-threads", "throughput-rtt10", 100),
-         "cpp-httplib · 100 threads", RIVAL),
-        (("cpr-threads", "throughput-rtt10", 100), "cpr · 100 threads",
-         RIVAL),
+        (("cofetch", "throughput-rtt10", 100), "cofetch", COFETCH),
         (("cpp-httplib-threads", "throughput-rtt10", 1),
          "cpp-httplib · sync", RIVAL),
         (("cpr-threads", "throughput-rtt10", 1), "cpr · sync", RIVAL),
