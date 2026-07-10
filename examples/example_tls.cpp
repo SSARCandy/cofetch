@@ -19,7 +19,7 @@ int main() {
         //   curl_easy_setopt(h, CURLOPT_SSL_VERIFYPEER, 0L);  // dev only!
         (void)h;
       })
-      .get([](std::error_code ec, cofetch::Response res) {
+      .get([](std::error_code ec, const cofetch::Response& res) {
         if (ec) {
           std::cerr << "tls/transport error: " << ec.message() << "\n";
           return;

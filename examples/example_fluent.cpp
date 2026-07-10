@@ -14,7 +14,7 @@ int main() {
       .headers({"content-type: application/json"})
       .body(R"({"greeting": "hello cofetch"})")
       .timeout(std::chrono::seconds(2))
-      .post([](std::error_code ec, cofetch::Response res) {
+      .post([](std::error_code ec, const cofetch::Response& res) {
         if (ec) {
           std::cerr << "transport error: " << ec.message() << "\n";
           return;

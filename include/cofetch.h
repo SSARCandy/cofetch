@@ -8,7 +8,7 @@
 //   http.request(url)
 //       .headers({"content-type: application/json"})
 //       .body(payload)
-//       .post([](std::error_code ec, cofetch::Response res) {});
+//       .post([](std::error_code ec, const cofetch::Response& res) {});
 //
 //   // std::future:
 //   auto fut = http.async_get(url, asio::use_future);
@@ -182,7 +182,7 @@ class Client {
   ~Client() {
     *alive_ = false;
     timer_.cancel();
-    for (auto& [fd, state] : sockets_) {
+    for (const auto& [fd, state] : sockets_) {
       error_code ignored;
       state->socket.close(ignored);
     }
@@ -482,7 +482,7 @@ class Client {
     curl_easy_setopt(eh, CURLOPT_CLOSESOCKETDATA, this);
   }
 
-  void set_body(Transfer& t) {
+  void set_body(const Transfer& t) {
     curl_easy_setopt(t.eh, CURLOPT_POSTFIELDSIZE,
                      static_cast<long>(t.body.size()));
     curl_easy_setopt(t.eh, CURLOPT_POSTFIELDS, t.body.c_str());
@@ -510,7 +510,7 @@ class Client {
   // backed by an ASIO object we can async_wait on. Cross-platform, no epoll.
   static curl_socket_t open_socket_cb(void* clientp, curlsocktype purpose,
                                       curl_sockaddr* address) {
-    auto* self = static_cast<Client*>(clientp);
+    auto* const self = static_cast<Client*>(clientp);
     if (purpose != CURLSOCKTYPE_IPCXN) return CURL_SOCKET_BAD;
     net::ip::tcp protocol = net::ip::tcp::v4();
     if (address->family == AF_INET6) {
@@ -528,7 +528,7 @@ class Client {
   }
 
   static int close_socket_cb(void* clientp, curl_socket_t fd) {
-    auto* self = static_cast<Client*>(clientp);
+    auto* const self = static_cast<Client*>(clientp);
     const auto it = self->sockets_.find(fd);
     if (it == self->sockets_.end()) return 1;
     it->second->watch = 0;
@@ -540,7 +540,7 @@ class Client {
 
   static int socket_cb(CURL*, curl_socket_t fd, int what, void* userp,
                        void* socketp) {
-    auto* self = static_cast<Client*>(userp);
+    auto* const self = static_cast<Client*>(userp);
     auto* state = static_cast<SocketState*>(socketp);
     if (state == nullptr) {
       // First notification for this socket: attach the state so curl hands
@@ -594,7 +594,7 @@ class Client {
   }
 
   static int timer_cb(CURLM*, long timeout_ms, void* userp) {
-    auto* self = static_cast<Client*>(userp);
+    auto* const self = static_cast<Client*>(userp);
     if (timeout_ms < 0) {
       self->timer_.cancel();
       self->timer_armed_ = false;
@@ -647,7 +647,7 @@ class Client {
       long http_code = 0;
       // msg must not be dereferenced after curl_multi_remove_handle().
       const CURLcode curl_code = msg->data.result;
-      CURL* eh = msg->easy_handle;
+      CURL* const eh = msg->easy_handle;
       curl_easy_getinfo(eh, CURLINFO_PRIVATE, &t);
       curl_easy_getinfo(eh, CURLINFO_RESPONSE_CODE, &http_code);
       curl_multi_remove_handle(multi_, eh);

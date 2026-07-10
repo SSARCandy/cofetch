@@ -169,14 +169,14 @@ TEST(Local, deferred_then_chain) {
   bool done = false;
 
   auto chain = client.async_get(echo_base() + "/get?step=1", asio::deferred)(
-      asio::deferred([&](std::error_code ec, Response first) {
+      asio::deferred([&](std::error_code ec, const Response& first) {
         EXPECT_FALSE(ec);
         EXPECT_NE(std::string::npos, first.data_.find("step=1"));
         return client.async_post(echo_base() + "/post", "prev=step1",
                                  asio::deferred);
       }));
 
-  std::move(chain)([&](std::error_code ec, Response second) {
+  std::move(chain)([&](std::error_code ec, const Response& second) {
     EXPECT_FALSE(ec);
     EXPECT_NE(std::string::npos, second.data_.find("prev=step1"));
     done = true;
@@ -192,7 +192,7 @@ TEST(Local, callback_busy_poll) {
   int completed = 0;
   for (int i = 0; i < 5; ++i) {
     client.async_get(echo_base() + "/get",
-                     [&](std::error_code ec, Response res) {
+                     [&](std::error_code ec, const Response& res) {
                        EXPECT_FALSE(ec);
                        EXPECT_TRUE(res.is_ok());
                        ++completed;
@@ -247,7 +247,7 @@ TEST(Local, timeout_is_transport_error) {
   bool done = false;
   client.request(echo_base() + "/delay/3")
       .timeout(std::chrono::seconds(1))
-      .get([&](std::error_code ec, Response res) {
+      .get([&](std::error_code ec, const Response& res) {
         EXPECT_EQ(static_cast<int>(CURLE_OPERATION_TIMEDOUT), ec.value());
         EXPECT_TRUE(ec.category() == cofetch::curl_category());
         EXPECT_FALSE(res.is_ok());
@@ -267,7 +267,7 @@ TEST(Local, concurrent_burst_beyond_pool_cap) {
   int completed = 0;
   for (int i = 0; i < kBurst; ++i) {
     client.async_get(echo_base() + "/get",
-                     [&](std::error_code ec, Response res) {
+                     [&](std::error_code ec, const Response& res) {
                        EXPECT_FALSE(ec);
                        EXPECT_TRUE(res.is_ok());
                        ++completed;
@@ -300,7 +300,7 @@ TEST(Local, inflight_dropped_on_destruction) {
   {
     Client client(io);
     client.async_get(echo_base() + "/get",
-                     [&](std::error_code, Response) { invoked = true; });
+                     [&](std::error_code, const Response&) { invoked = true; });
   }
   io.run();
   EXPECT_FALSE(invoked);
@@ -324,7 +324,7 @@ TEST(Local, follow_redirects_lands_on_target) {
   bool done = false;
   client.request(echo_base() + "/redirect/2")
       .follow_redirects()
-      .get([&](std::error_code ec, Response res) {
+      .get([&](std::error_code ec, const Response& res) {
         EXPECT_FALSE(ec);
         EXPECT_TRUE(res.is_ok());
         EXPECT_NE(std::string::npos, res.data_.find("\"/get\""));
@@ -341,7 +341,7 @@ TEST(Local, too_many_redirects_is_transport_error) {
   bool done = false;
   client.request(echo_base() + "/redirect/3")
       .follow_redirects(1)
-      .get([&](std::error_code ec, Response res) {
+      .get([&](std::error_code ec, const Response& res) {
         EXPECT_EQ(static_cast<int>(CURLE_TOO_MANY_REDIRECTS), ec.value());
         EXPECT_TRUE(ec.category() == cofetch::curl_category());
         EXPECT_FALSE(res.is_ok());
@@ -362,7 +362,7 @@ TEST(Local, curl_escape_hatch_and_pool_scrub) {
       .curl([](CURL* h) {
         curl_easy_setopt(h, CURLOPT_USERAGENT, "cofetch-hook/1");
       })
-      .get([&](std::error_code ec, Response res) {
+      .get([&](std::error_code ec, const Response& res) {
         EXPECT_FALSE(ec);
         EXPECT_NE(std::string::npos, res.data_.find("cofetch-hook/1"));
         hooked = true;
@@ -373,12 +373,13 @@ TEST(Local, curl_escape_hatch_and_pool_scrub) {
   // Same client, same pooled handle (LIFO): the sticky option must be gone.
   io.restart();
   bool plain = false;
-  client.async_get(echo_base() + "/get", [&](std::error_code ec, Response res) {
-    EXPECT_FALSE(ec);
-    EXPECT_TRUE(res.is_ok());
-    EXPECT_EQ(std::string::npos, res.data_.find("cofetch-hook"));
-    plain = true;
-  });
+  client.async_get(
+      echo_base() + "/get", [&](std::error_code ec, const Response& res) {
+        EXPECT_FALSE(ec);
+        EXPECT_TRUE(res.is_ok());
+        EXPECT_EQ(std::string::npos, res.data_.find("cofetch-hook"));
+        plain = true;
+      });
   io.run();
   EXPECT_TRUE(plain);
 }
@@ -391,7 +392,7 @@ TEST(Local, cancellation_slot_aborts_inflight_request) {
   bool done = false;
   client.request(echo_base() + "/delay/3")
       .get(asio::bind_cancellation_slot(
-          sig.slot(), [&](std::error_code ec, Response res) {
+          sig.slot(), [&](std::error_code ec, const Response& res) {
             EXPECT_EQ(asio::error::operation_aborted, ec);
             EXPECT_FALSE(res.is_ok());
             done = true;
@@ -435,7 +436,7 @@ TEST(Local, cancel_after_completion_is_noop) {
     Client client(io);
     client.async_get(echo_base() + "/get",
                      asio::bind_cancellation_slot(
-                         sig.slot(), [&](std::error_code ec, Response) {
+                         sig.slot(), [&](std::error_code ec, const Response&) {
                            EXPECT_FALSE(ec);
                            ++completions;
                          }));

@@ -32,11 +32,12 @@ constexpr const char* kUrl = "https://postman-echo.com/get";
 
 void launch_requests(cofetch::Client& http, int& completed) {
   for (int i = 0; i < kRequests; ++i) {
-    http.async_get(kUrl, [&, i](std::error_code ec, cofetch::Response res) {
-      ++completed;
-      cout << "  #" << i << " -> "
-           << (ec ? ec.message() : to_string(res.http_code_)) << "\n";
-    });
+    http.async_get(
+        kUrl, [&, i](std::error_code ec, const cofetch::Response& res) {
+          ++completed;
+          cout << "  #" << i << " -> "
+               << (ec ? ec.message() : to_string(res.http_code_)) << "\n";
+        });
   }
 }
 

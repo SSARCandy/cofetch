@@ -29,12 +29,13 @@ int run_throughput(const std::string& url, int total, int concurrency,
     while (in_flight < concurrency && launched < total) {
       ++in_flight;
       ++launched;
-      client.async_get(url, [&](std::error_code ec, cofetch::Response res) {
-        --in_flight;
-        ++done;
-        if (ec || !res.is_ok()) ++failed;
-        refill();
-      });
+      client.async_get(url,
+                       [&](std::error_code ec, const cofetch::Response& res) {
+                         --in_flight;
+                         ++done;
+                         if (ec || !res.is_ok()) ++failed;
+                         refill();
+                       });
     }
   };
   refill();
@@ -90,10 +91,11 @@ int main(int argc, char** argv) {
       // Same shape as the epoll baseline's chain: callback per request.
       int remaining = args.total;
       std::function<void()> next = [&] {
-        client.async_get(url, [&](std::error_code ec, cofetch::Response res) {
-          if (ec || !res.is_ok()) ++failed;
-          if (--remaining > 0) next();
-        });
+        client.async_get(url,
+                         [&](std::error_code ec, const cofetch::Response& res) {
+                           if (ec || !res.is_ok()) ++failed;
+                           if (--remaining > 0) next();
+                         });
       };
       next();
       if (busy_poll) {

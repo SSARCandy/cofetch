@@ -12,7 +12,7 @@ int main() {
   cofetch::Client http(io);
 
   http.async_get("https://postman-echo.com/gzip",
-                 [](std::error_code ec, cofetch::Response res) {
+                 [](std::error_code ec, const cofetch::Response& res) {
                    if (ec) {
                      std::cerr << ec.message() << "\n";
                      return;

@@ -31,11 +31,11 @@ int main() {
 
   auto chain = client.request(base + "/post")
                    .body("x=1")
-                   .post(anet::deferred)(
-                       anet::deferred([&](std::error_code, cofetch::Response) {
+                   .post(anet::deferred)(anet::deferred(
+                       [&](std::error_code, const cofetch::Response&) {
                          return client.async_get(base + "/get", anet::deferred);
                        }));
-  std::move(chain)([&](std::error_code ec, cofetch::Response res) {
+  std::move(chain)([&](std::error_code ec, const cofetch::Response& res) {
     ok = !ec && res.is_ok();
   });
 

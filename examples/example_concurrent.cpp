@@ -12,14 +12,14 @@ int main() {
 
   int done = 0;
   for (int i = 1; i <= 20; ++i) {
-    http.async_get("https://postman-echo.com/get?n=" + std::to_string(i),
-                   [&done, i](std::error_code ec, cofetch::Response res) {
-                     std::cout
-                         << "#" << i << " -> "
-                         << (ec ? ec.message() : std::to_string(res.http_code_))
-                         << "\n";
-                     ++done;
-                   });
+    http.async_get(
+        "https://postman-echo.com/get?n=" + std::to_string(i),
+        [&done, i](std::error_code ec, const cofetch::Response& res) {
+          std::cout << "#" << i << " -> "
+                    << (ec ? ec.message() : std::to_string(res.http_code_))
+                    << "\n";
+          ++done;
+        });
   }
 
   io.run();
