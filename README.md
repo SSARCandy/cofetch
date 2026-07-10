@@ -1,19 +1,20 @@
 # cofetch
 
-> Chainable, high-performance async HTTP client for C++ event loops —
-> libcurl's engine, ASIO's completion tokens. C++17 and up.
+> Chainable, high-performance async HTTP client for C++ event loops.  
+> Powered by libcurl's engine, ASIO's completion tokens. Made for C++17 and up.
 
 Requests **build as a chain** — setters flow off `request()` and the
 HTTP verb fires the transfer, without blocking the thread:
 
 ```cpp
-client.request("https://api.example.com/orders")
-    .headers({"content-type: application/json"})
-    .body(R"({"qty": 1})")
-    .timeout(std::chrono::seconds(2))
-    .post([](std::error_code ec, cofetch::Response res) {
-      // transport errors in ec; HTTP status in res.http_code_
-    });
+client
+  .request("https://api.example.com/orders")
+  .headers({"content-type: application/json"})
+  .body(R"({"qty": 1})")
+  .timeout(std::chrono::seconds(2))
+  .post([](std::error_code ec, cofetch::Response res) {
+    // transport errors in ec; HTTP status in res.http_code_
+  });
 ```
 
 Callbacks are the zero-overhead hot path, and any ASIO completion
@@ -119,8 +120,6 @@ Copy `http/cofetch.h`, add asio to your include path, link `libcurl`.
 
 - **Not a server.** Client only. For a server (or a tiny zero-dependency
   client), use [cpp-httplib](https://github.com/yhirose/cpp-httplib).
-- **Not single-header-zero-dependency.** Riding libcurl is a deliberate
-  trade: dependencies in exchange for protocol maturity.
 - **Not thread-safe.** One `Client` per `io_context` thread by design —
   no locks on the hot path. The client must outlive its in-flight
   requests.
@@ -136,3 +135,7 @@ git submodule update --init          # asio + googletest (dev only)
 CI runs the linter, the offline test suite (local echo server, no
 external endpoints) on Linux gcc/clang and macOS, and a C++17 consumer
 smoke build.
+
+## License
+
+[MIT](LICENSE)
