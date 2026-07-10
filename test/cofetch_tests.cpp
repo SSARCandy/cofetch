@@ -351,6 +351,38 @@ TEST(Local, too_many_redirects_is_transport_error) {
   EXPECT_TRUE(done);
 }
 
+// The .curl() escape hatch reaches the raw easy handle — and whatever it
+// sets is scrubbed before the pooled handle serves the next request.
+TEST(Local, curl_escape_hatch_and_pool_scrub) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool hooked = false;
+  client.request(echo_base() + "/get")
+      .curl([](CURL* h) {
+        curl_easy_setopt(h, CURLOPT_USERAGENT, "cofetch-hook/1");
+      })
+      .get([&](std::error_code ec, Response res) {
+        EXPECT_FALSE(ec);
+        EXPECT_NE(std::string::npos, res.data_.find("cofetch-hook/1"));
+        hooked = true;
+      });
+  io.run();
+  EXPECT_TRUE(hooked);
+
+  // Same client, same pooled handle (LIFO): the sticky option must be gone.
+  io.restart();
+  bool plain = false;
+  client.async_get(echo_base() + "/get", [&](std::error_code ec, Response res) {
+    EXPECT_FALSE(ec);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(std::string::npos, res.data_.find("cofetch-hook"));
+    plain = true;
+  });
+  io.run();
+  EXPECT_TRUE(plain);
+}
+
 TEST(Local, response_defaults_and_error_text) {
   const Response res;
   EXPECT_FALSE(res.is_ok());  // http_code_ 0 is not a 2xx

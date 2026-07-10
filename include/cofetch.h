@@ -33,6 +33,7 @@
 #include <curl/curl.h>
 
 #include <chrono>
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
@@ -136,6 +137,16 @@ class Request {
     max_redirects_ = max;
     return *this;
   }
+  /**
+   * @brief Escape hatch: fn runs on the underlying easy handle after
+   * cofetch's own options, so it can set (or override) any CURLOPT_*.
+   * The handle is scrubbed with curl_easy_reset before returning to the
+   * reuse pool, so options set here never leak into later requests.
+   */
+  Request& curl(std::function<void(CURL*)> fn) {
+    curl_setup_ = std::move(fn);
+    return *this;
+  }
 
   std::string url_;
   Method method_ = Method::GET;
@@ -143,6 +154,7 @@ class Request {
   std::string body_;
   std::chrono::seconds timeout_{5};
   long max_redirects_ = 0;  // 0: do not follow redirects
+  std::function<void(CURL*)> curl_setup_;
 };
 
 class Client {
@@ -236,6 +248,10 @@ class Client {
       req_.follow_redirects(max);
       return *this;
     }
+    RequestBuilder& curl(std::function<void(CURL*)> fn) {
+      req_.curl(std::move(fn));
+      return *this;
+    }
 
     template <typename CompletionToken>
     auto get(CompletionToken&& token) {
@@ -295,6 +311,10 @@ class Client {
     std::string header_buffer;
     Handler handler;
     std::list<Transfer>::iterator self;
+    // Set when Request::curl ran on this handle: unknown options must be
+    // wiped (curl_easy_reset + configure_handle) before the handle is
+    // pooled, or they would leak into whatever request draws it next.
+    bool scrub_on_done = false;
   };
 
   struct SocketState : std::enable_shared_from_this<SocketState> {
@@ -360,6 +380,12 @@ class Client {
         curl_easy_setopt(eh, CURLOPT_POST, 1L);
         set_body(*it);
         break;
+    }
+
+    // The escape hatch runs last so it can override anything above.
+    if (r.curl_setup_) {
+      it->scrub_on_done = true;
+      r.curl_setup_(eh);
     }
 
     // curl schedules the kickstart itself through the timer callback.
@@ -560,6 +586,10 @@ class Client {
                    std::move(t->header_buffer)};
       Handler handler = std::move(t->handler);
       curl_slist_free_all(t->headers);
+      if (t->scrub_on_done) {
+        curl_easy_reset(eh);
+        configure_handle(eh);
+      }
       if (pool_.size() < kMaxPooledHandles) {
         pool_.emplace_back(t->eh);
       } else {
