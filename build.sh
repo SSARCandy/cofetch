@@ -43,14 +43,17 @@ test() {
     ./all_test
     cd $CURDIR;
 
+    # lcov 2.x hard-errors on line inconsistencies from gcc-14 coroutine code
+    LCOV_OPTS="--ignore-errors inconsistent,mismatch"
+
     lcov \
-        --capture \
+        --capture ${LCOV_OPTS} \
         --directory build/test/ \
         --output-file coverage.info \
         --test-name coverageHtml > /dev/null
 
-    lcov  -o coverage.info --extract coverage.info "${CURDIR}/http/*" > /dev/null
-    genhtml -o .coverage coverage.info
+    lcov ${LCOV_OPTS} -o coverage.info --extract coverage.info "${CURDIR}/http/*" > /dev/null
+    genhtml --ignore-errors inconsistent -o .coverage coverage.info
 }
 
 
