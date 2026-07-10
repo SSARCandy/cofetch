@@ -23,17 +23,26 @@ trap 'nginx -p "${NGINX_PREFIX}" -c "${CURDIR}/bench/nginx.conf" -s stop' EXIT
 sleep 0.3
 
 BIN=build-bench/bench
+NPROC=$(nproc)
 echo "name,scenario,total,concurrency,seconds,req_per_sec,failed"
 for _ in 1 2 3; do ${BIN}/bench_cofetch throughput "${URL}" 2000 100 > /dev/null; done  # warmup
 
+# Tier 1: same workload, ONE thread each. Sync clients can only keep
+# in-flight == threads; async clients keep ${CONC} requests in flight.
 ${BIN}/bench_cofetch throughput "${URL}" "${TOTAL}" "${CONC}"
 COFETCH_BENCH_POLL=1 ${BIN}/bench_cofetch throughput "${URL}" "${TOTAL}" "${CONC}"
-COFETCH_BENCH_LOOPS=$(nproc) ${BIN}/bench_cofetch throughput "${URL}" "${TOTAL}" "${CONC}"
 ${BIN}/bench_epoll   throughput "${URL}" "${TOTAL}" "${CONC}"
-${BIN}/bench_cpr     throughput "${URL}" "${TOTAL}" "${CONC}"
-${BIN}/bench_httplib throughput "${URL}" "${TOTAL}" "${CONC}"
+${BIN}/bench_cpr     throughput "${URL}" "${TOTAL}" 1
+${BIN}/bench_httplib throughput "${URL}" "${TOTAL}" 1
 
+# Tier 2: same workload, one thread per core for everyone.
+COFETCH_BENCH_LOOPS=${NPROC} ${BIN}/bench_cofetch throughput "${URL}" "${TOTAL}" "${CONC}"
+${BIN}/bench_cpr     throughput "${URL}" "${TOTAL}" "${NPROC}"
+${BIN}/bench_httplib throughput "${URL}" "${TOTAL}" "${NPROC}"
+
+# Chain: sequential dependent requests, one thread, one in flight.
 ${BIN}/bench_cofetch chain "${URL}" "${CHAIN}"
+COFETCH_BENCH_CB=1 ${BIN}/bench_cofetch chain "${URL}" "${CHAIN}"
 ${BIN}/bench_epoll   chain "${URL}" "${CHAIN}"
 ${BIN}/bench_cpr     chain "${URL}" "${CHAIN}"
 ${BIN}/bench_httplib chain "${URL}" "${CHAIN}"

@@ -53,26 +53,53 @@ implementation behind all of them.
 
 ## Benchmarks
 
-Local nginx on Debian (WSL2, 20 cores), gcc 14 `-O3`. Zero-latency
-loopback, so this measures client CPU overhead, not the network.
-Requests/second; higher is better. Reproduce with `bench/run_bench.sh`.
+Local nginx on Debian (WSL2, 20 cores), gcc 14 `-O3`. Every client
+does the **same 20,000 GETs**, so wall-clock time is directly
+comparable. Zero-latency loopback measures client CPU overhead, not
+the network. Reproduce with `bench/run_bench.sh`.
 
-| client | threads | 20k GETs, 100 concurrent | 2k sequential (chain) |
+**One thread each.** A sync client drives one request at a time; an
+async client keeps 100 in flight on that same single thread — that is
+the point of async:
+
+| client | in flight | time | req/s |
 |---|---:|---:|---:|
-| **cofetch** (callbacks, `run()`) | 1 | 15,369 | — |
-| **cofetch** (callbacks, busy-`poll()`) | 1 | 15,081 | — |
-| **cofetch** (coroutine chain) | 1 | — | 9,704 |
-| **cofetch** (one event loop per core) | 20 | **210,632** | — |
-| epoll ancestor of cofetch (reference) | 1 | 19,182 | 15,569 |
-| [cpr](https://github.com/libcpr/cpr) (thread pool, sync sessions) | 100 | 82,603 | 10,715 |
-| [cpp-httplib](https://github.com/yhirose/cpp-httplib) (thread pool, sync clients) | 100 | 126,343 | 12,801 |
+| **cofetch** (callbacks, `run()`) | 100 | 1.30 s | 15,388 |
+| **cofetch** (callbacks, busy-`poll()`) | 100 | 1.27 s | 15,794 |
+| [cpr](https://github.com/libcpr/cpr) (sync session) | 1 | 1.93 s | 10,367 |
+| [cpp-httplib](https://github.com/yhirose/cpp-httplib) (sync client) | 1 | 1.52 s | 13,186 |
+| *epoll ancestor of cofetch (internal reference)* | 100 | 1.04 s | 19,304 |
 
-cpr and cpp-httplib are synchronous libraries, so concurrency means
-threads — their throughput above costs 100 of them. cofetch moves 15k
-req/s on **one** thread (~18× cpr's per-thread rate), and with one
-event loop per core it outruns both on a fifth of the threads — while
-staying an async client you can compose with timers, sockets, and
-coroutines instead of blocking a pool.
+**One thread per core (20 threads each).** cofetch runs one event loop
+per core; the sync libraries get an equal-sized thread pool:
+
+| client | threads | time | req/s |
+|---|---:|---:|---:|
+| **cofetch** (one event loop per core) | 20 | **0.10 s** | **200,594** |
+| cpr (thread pool) | 20 | 0.17 s | 120,055 |
+| cpp-httplib (thread pool) | 20 | 0.16 s | 127,565 |
+
+**Sequential chain.** 2,000 dependent requests, one at a time on one
+thread — this measures per-request latency, and no client can hide it
+with concurrency:
+
+| client | time | req/s |
+|---|---:|---:|
+| **cofetch** (callback chain) | 0.19 s | 10,466 |
+| **cofetch** (coroutine chain) | 0.20 s | 10,254 |
+| cpr | 0.20 s | 10,224 |
+| cpp-httplib | 0.16 s | 12,604 |
+| *epoll ancestor of cofetch (internal reference)* | 0.13 s | 15,487 |
+
+Honest notes: the raw-epoll client cofetch grew out of (kept in
+`bench/baseline/`) is still 25–50% faster on loopback — the current
+price of the portable ASIO reactor (per-event re-arm, executor
+dispatch), not of coroutines (callback and coroutine chains differ by
+~2%). An io_uring ASIO backend recovers about half of that gap;
+closing the rest is on the roadmap. On a real network, milliseconds of
+RTT dwarf these microseconds — what remains is the thread count you
+pay: one loop beats a sync client per-thread, and per-core loops beat
+a 20-thread pool by ~60%.
 
 ## Quick start
 

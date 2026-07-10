@@ -83,7 +83,22 @@ int main(int argc, char** argv) {
     asio::io_context io;
     cofetch::Client client(io);
     int failed = 0;
+    const bool callbacks = std::getenv("COFETCH_BENCH_CB") != nullptr;
     const bench::Timer timer;
+    if (callbacks) {
+      // Same shape as the epoll baseline's chain: callback per request.
+      int remaining = args.total;
+      std::function<void()> next = [&] {
+        client.async_get(url, [&](std::error_code ec, cofetch::Response res) {
+          if (ec || !res.is_ok()) ++failed;
+          if (--remaining > 0) next();
+        });
+      };
+      next();
+      io.run();
+      bench::report("cofetch-cb", args, timer.seconds(), failed);
+      return failed != 0;
+    }
     asio::co_spawn(
         io,
         [&]() -> asio::awaitable<void> {
