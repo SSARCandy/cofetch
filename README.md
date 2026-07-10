@@ -22,8 +22,10 @@ client
 
 Callbacks are the zero-overhead hot path, and any ASIO completion
 token plugs into the same calls — `std::future`, `asio::deferred`,
-`asio::as_tuple`. On C++20, that includes coroutines: dependent
-requests in linear code, no nesting:
+`asio::as_tuple`. Cancellation composes the way it does everywhere
+in asio: `asio::cancel_after(2s, token)` aborts an in-flight request.
+On C++20, that includes coroutines: dependent requests in linear
+code, no nesting:
 
 ```cpp
 const auto user  = co_await client.async_get(api + "/user", asio::use_awaitable);
@@ -41,7 +43,9 @@ const auto posts = co_await client.async_post(api + "/posts", user.data_, asio::
   with `run()`, or `poll()` it from a busy loop that must never block
   (the trading hot path this library grew out of).
 - **libcurl underneath.** HTTP/1.1 and HTTP/2 multiplexing, TLS,
-  compression, connection pooling, proxy support.
+  compression, connection pooling, redirects. For anything cofetch
+  does not wrap, `.curl([](CURL* h) { ... })` exposes the raw handle
+  per request.
 - **C++17-friendly.** The full API — chains, callbacks, futures,
   `deferred` — works on C++17; C++20 adds the `co_await` interface.
 
