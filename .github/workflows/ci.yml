@@ -87,7 +87,9 @@ jobs:
           done
           COFETCH_ECHO=http://127.0.0.1:18089 ./build/test/all_test
       - name: Generate coverage report
-        run: gcovr --root . --filter include/ --xml -o coverage.xml build
+        # exclude compiler-generated exception/unreachable branches, or
+        # codecov counts nearly every C++ line as partially covered
+        run: gcovr --root . --filter include/ --exclude-unreachable-branches --exclude-throw-branches --xml -o coverage.xml build
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
         with:
