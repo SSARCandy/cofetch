@@ -44,7 +44,7 @@ Same workload for every client: 20,000 GETs against a local nginx. [cpr](https:/
 </picture>
 
 Exact numbers, environment, and how to reproduce:
-[bench/README.md](https://github.com/SSARCandy/cofetch/tree/main/bench).
+[bench/README.md](bench/README.md).
 
 ## Quick start
 
@@ -72,7 +72,7 @@ int main() {
 }
 ```
 
-On C++20 the same flow reads linearly with `co_await` (`examples/example_coroutine.cpp`); the full set lives in [examples/](examples/).
+On C++20 the same flow reads linearly with `co_await` (`examples/example_coroutine.cpp`); the full set lives in [examples/](examples/README.md).
 
 Prefer a plain value? `cofetch::Request` holds the same fields and fires later via `http.async_perform(std::move(req), token)`.
 
