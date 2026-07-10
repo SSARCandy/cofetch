@@ -102,5 +102,10 @@ chain panel because it is cofetch's documented latency mode.
   single-threaded apps — the concurrency hint removes internal locking.
 - asio's io_uring backend (`-DASIO_HAS_IO_URING -DASIO_DISABLE_EPOLL`,
   link `-luring`) was measured +14% throughput before these
-  optimizations; re-measure if pursuing. Persistent socket registration
-  is the remaining idea — see ROADMAP.
+  optimizations; re-measure if pursuing.
+- Persistent socket registration was tried and **rejected** (2026-07-10):
+  a client-owned epoll set with the epoll fd registered in asio measured
+  −8% throughput and −3% chain vs the one-shot path. asio's epoll
+  reactor already keeps descriptors persistently registered internally;
+  nesting a second epoll only added syscalls per batch. Interleaved A/B,
+  5 rounds each. Don't retry without new evidence.
