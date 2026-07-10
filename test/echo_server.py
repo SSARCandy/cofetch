@@ -49,6 +49,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def handle(self):
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # client canceled mid-response; not a server error
+
     do_GET = _respond
     do_POST = _respond
     do_PUT = _respond

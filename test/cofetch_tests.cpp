@@ -383,6 +383,71 @@ TEST(Local, curl_escape_hatch_and_pool_scrub) {
   EXPECT_TRUE(plain);
 }
 
+TEST(Local, cancellation_slot_aborts_inflight_request) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  asio::cancellation_signal sig;
+  bool done = false;
+  client.request(echo_base() + "/delay/3")
+      .get(asio::bind_cancellation_slot(
+          sig.slot(), [&](std::error_code ec, Response res) {
+            EXPECT_EQ(asio::error::operation_aborted, ec);
+            EXPECT_FALSE(res.is_ok());
+            done = true;
+          }));
+  asio::steady_timer trigger(io, std::chrono::milliseconds(100));
+  trigger.async_wait(
+      [&](std::error_code) { sig.emit(asio::cancellation_type::terminal); });
+  io.run();  // returns long before the 3s delay: the transfer was torn down
+  EXPECT_TRUE(done);
+}
+
+// cancel_after composes the same way it does for any asio operation.
+TEST(Local, cancel_after_token) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  asio::co_spawn(
+      io,
+      [&]() -> asio::awaitable<void> {
+        const auto [ec, res] = co_await client.async_get(
+            echo_base() + "/delay/3",
+            asio::cancel_after(std::chrono::milliseconds(100),
+                               asio::as_tuple(asio::use_awaitable)));
+        EXPECT_EQ(asio::error::operation_aborted, ec);
+        done = true;
+      },
+      asio::detached);
+  io.run();
+  EXPECT_TRUE(done);
+}
+
+// A late emit — after the request completed, and even after the client is
+// gone — must be a harmless no-op, not a dangling-pointer dereference.
+TEST(Local, cancel_after_completion_is_noop) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  asio::cancellation_signal sig;
+  int completions = 0;
+  {
+    Client client(io);
+    client.async_get(echo_base() + "/get",
+                     asio::bind_cancellation_slot(
+                         sig.slot(), [&](std::error_code ec, Response) {
+                           EXPECT_FALSE(ec);
+                           ++completions;
+                         }));
+    io.run();
+    EXPECT_EQ(1, completions);
+    sig.emit(asio::cancellation_type::terminal);  // transfer already gone
+    EXPECT_EQ(1, completions);
+  }
+  sig.emit(asio::cancellation_type::terminal);  // client already gone
+  EXPECT_EQ(1, completions);
+}
+
 TEST(Local, response_defaults_and_error_text) {
   const Response res;
   EXPECT_FALSE(res.is_ok());  // http_code_ 0 is not a 2xx

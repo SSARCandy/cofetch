@@ -20,6 +20,8 @@
 //   auto res = co_await client.async_get(url, asio::use_awaitable);
 //
 // Drive it with io_context::run(), or io_context::poll() in a busy loop.
+// Requests are cancellable through asio's cancellation slots
+// (asio::cancel_after, asio::bind_cancellation_slot, co_spawn).
 // Not thread-safe: run the client and its io_context on one thread.
 // Define COFETCH_USE_BOOST_ASIO to build on Boost.Asio instead of
 // standalone asio. The API is identical; cofetch::error_code follows the
@@ -33,6 +35,7 @@
 #include <curl/curl.h>
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
@@ -195,14 +198,16 @@ class Client {
    * void(std::error_code, Response): the error_code carries the CURLcode
    * (curl_category) for transport failures and is empty otherwise; HTTP
    * error statuses are not transport failures (check Response::is_ok()).
+   *
+   * If the completion handler has an associated cancellation slot
+   * (asio::bind_cancellation_slot, asio::cancel_after, co_spawn's
+   * cancellation state, ...), emitting cancellation aborts the transfer
+   * and the handler completes with asio::error::operation_aborted.
    */
   template <typename CompletionToken>
   auto async_perform(Request req, CompletionToken&& token) {
     return net::async_initiate<CompletionToken, void(error_code, Response)>(
-        [this](auto handler, Request r) {
-          start(std::move(r), Handler(std::move(handler)));
-        },
-        token, std::move(req));
+        Initiation{this}, token, std::move(req));
   }
 
   template <typename CompletionToken>
@@ -298,6 +303,21 @@ class Client {
  private:
   using Handler = net::any_completion_handler<void(error_code, Response)>;
 
+  // Initiation for async_perform. Exposing the io_context executor lets
+  // executor-aware tokens work — asio::cancel_after, for one, builds its
+  // timeout timer on Initiation::executor_type.
+  struct Initiation {
+    Client* self;
+    using executor_type = net::io_context::executor_type;
+    executor_type get_executor() const noexcept {
+      return self->io_.get_executor();
+    }
+    template <typename H>
+    void operator()(H handler, Request r) const {
+      self->start(std::move(r), Handler(std::move(handler)));
+    }
+  };
+
   // Idle easy handles kept for reuse; beyond this they are freed so a burst
   // of concurrent requests does not pin memory forever.
   static constexpr size_t kMaxPooledHandles = 64;
@@ -311,6 +331,7 @@ class Client {
     std::string header_buffer;
     Handler handler;
     std::list<Transfer>::iterator self;
+    std::uint64_t id = 0;
     // Set when Request::curl ran on this handle: unknown options must be
     // wiped (curl_easy_reset + configure_handle) before the handle is
     // pooled, or they would leak into whatever request draws it next.
@@ -388,8 +409,57 @@ class Client {
       r.curl_setup_(eh);
     }
 
+    it->id = ++next_transfer_id_;
+    auto slot = net::get_associated_cancellation_slot(it->handler);
+    if (slot.is_connected()) {
+      // Look the transfer up by id at emit time: the slot outlives the
+      // transfer (asio only guarantees clearing on handler destruction),
+      // so a late emit must find nothing rather than follow a dangling
+      // pointer. alive_ covers emits after ~Client.
+      slot.assign(
+          [this, alive = alive_, id = it->id](net::cancellation_type_t) {
+            if (*alive) cancel(id);
+          });
+    }
+
     // curl schedules the kickstart itself through the timer callback.
     curl_multi_add_handle(multi_, eh);
+  }
+
+  // Cooperative cancellation, reached through the completion handler's
+  // associated cancellation slot. Any cancellation type aborts: the
+  // transfer is torn down and the handler completes with
+  // operation_aborted. No-op when the transfer already completed.
+  void cancel(std::uint64_t id) {
+    for (auto& t : transfers_) {
+      if (t.id != id) continue;
+      // Also discards any DONE message this handle queued in the multi.
+      curl_multi_remove_handle(multi_, t.eh);
+      if (running_ > 0) --running_;
+      Handler handler = std::move(t.handler);
+      curl_slist_free_all(t.headers);
+      // Severed mid-flight: scrub before the handle is reused.
+      curl_easy_reset(t.eh);
+      configure_handle(t.eh);
+      if (pool_.size() < kMaxPooledHandles) {
+        pool_.emplace_back(t.eh);
+      } else {
+        curl_easy_cleanup(t.eh);
+      }
+      transfers_.erase(t.self);
+      // Unlike normal completions this one is posted, not invoked: we are
+      // inside the cancellation emit, and completing here can destroy the
+      // very signal being emitted (asio::cancel_after owns its signal in
+      // the operation state the completion frees).
+      net::post(io_, net::bind_allocator(
+                         net::recycling_allocator<void>(),
+                         [h = std::move(handler)]() mutable {
+                           std::move(h)(
+                               error_code(net::error::operation_aborted),
+                               Response{CURLE_ABORTED_BY_CALLBACK, 0, {}, {}});
+                         }));
+      return;
+    }
   }
 
   // Request-independent options, set once per easy handle. Everything a
@@ -613,6 +683,7 @@ class Client {
   std::list<Transfer> transfers_;
   std::vector<CURL*> pool_;
   int running_ = 0;
+  std::uint64_t next_transfer_id_ = 0;
   bool kick_pending_ = false;
   bool timer_armed_ = false;
   // Outlives the client inside posted/timed kicks: they bail out when the
