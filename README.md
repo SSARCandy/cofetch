@@ -114,7 +114,7 @@ then follows the flavor: `std::` or `boost::system::`).
 include(FetchContent)
 FetchContent_Declare(cofetch
     GIT_REPOSITORY https://github.com/SSARCandy/cofetch.git
-    GIT_TAG main)
+    GIT_TAG v0.1.0)
 FetchContent_MakeAvailable(cofetch)
 target_link_libraries(your_app PRIVATE cofetch::cofetch)
 ```
