@@ -21,7 +21,14 @@
 //
 // Drive it with io_context::run(), or io_context::poll() in a busy loop.
 // Not thread-safe: run the client and its io_context on one thread.
+// Define COFETCH_USE_BOOST_ASIO to build on Boost.Asio instead of
+// standalone asio. The API is identical; cofetch::error_code follows the
+// flavor (std::error_code, or boost::system::error_code) — curl category.
+#if defined(COFETCH_USE_BOOST_ASIO)
+#include <boost/asio.hpp>
+#else
 #include <asio.hpp>
+#endif
 //
 #include <curl/curl.h>
 
@@ -36,11 +43,23 @@
 
 namespace cofetch {
 
+#if defined(COFETCH_USE_BOOST_ASIO)
+namespace net = boost::asio;
+// The error type follows the asio flavor so completion tokens recognise
+// it (Boost.Asio only unwraps boost::system::error_code).
+using error_code = boost::system::error_code;
+using error_category = boost::system::error_category;
+#else
+namespace net = asio;
+using error_code = std::error_code;
+using error_category = std::error_category;
+#endif
+
 /**
  * @brief std::error_category for libcurl transport errors (CURLcode values).
  */
-inline const std::error_category& curl_category() {
-  class category final : public std::error_category {
+inline const error_category& curl_category() {
+  class category final : public error_category {
    public:
     const char* name() const noexcept override { return "curl"; }
     std::string message(int ev) const override {
@@ -51,7 +70,7 @@ inline const std::error_category& curl_category() {
   return instance;
 }
 
-inline std::error_code make_error_code(CURLcode code) {
+inline error_code make_error_code(CURLcode code) {
   return {static_cast<int>(code), curl_category()};
 }
 
@@ -119,7 +138,7 @@ class Request {
 
 class Client {
  public:
-  explicit Client(asio::io_context& io) : io_(io), timer_(io) {
+  explicit Client(net::io_context& io) : io_(io), timer_(io) {
     curl_global_init(CURL_GLOBAL_ALL);
     multi_ = curl_multi_init();
     curl_multi_setopt(multi_, CURLMOPT_SOCKETFUNCTION, socket_cb);
@@ -140,7 +159,7 @@ class Client {
     *alive_ = false;
     timer_.cancel();
     for (auto& [fd, state] : sockets_) {
-      std::error_code ignored;
+      error_code ignored;
       state->socket.close(ignored);
     }
     curl_multi_cleanup(multi_);
@@ -158,8 +177,7 @@ class Client {
    */
   template <typename CompletionToken>
   auto async_perform(Request req, CompletionToken&& token) {
-    return asio::async_initiate<CompletionToken,
-                                void(std::error_code, Response)>(
+    return net::async_initiate<CompletionToken, void(error_code, Response)>(
         [this](auto handler, Request r) {
           start(std::move(r), Handler(std::move(handler)));
         },
@@ -249,7 +267,7 @@ class Client {
   int pending_requests() const { return running_; }
 
  private:
-  using Handler = asio::any_completion_handler<void(std::error_code, Response)>;
+  using Handler = net::any_completion_handler<void(error_code, Response)>;
 
   // Idle easy handles kept for reuse; beyond this they are freed so a burst
   // of concurrent requests does not pin memory forever.
@@ -267,8 +285,8 @@ class Client {
   };
 
   struct SocketState : std::enable_shared_from_this<SocketState> {
-    explicit SocketState(asio::io_context& io) : socket(io) {}
-    asio::ip::tcp::socket socket;
+    explicit SocketState(net::io_context& io) : socket(io) {}
+    net::ip::tcp::socket socket;
     int watch = 0;  // current CURL_POLL_* interest
     bool read_armed = false;
     bool write_armed = false;
@@ -381,14 +399,14 @@ class Client {
                                       curl_sockaddr* address) {
     auto* self = static_cast<Client*>(clientp);
     if (purpose != CURLSOCKTYPE_IPCXN) return CURL_SOCKET_BAD;
-    asio::ip::tcp protocol = asio::ip::tcp::v4();
+    net::ip::tcp protocol = net::ip::tcp::v4();
     if (address->family == AF_INET6) {
-      protocol = asio::ip::tcp::v6();
+      protocol = net::ip::tcp::v6();
     } else if (address->family != AF_INET) {
       return CURL_SOCKET_BAD;
     }
     auto state = std::make_shared<SocketState>(self->io_);
-    std::error_code ec;
+    error_code ec;
     state->socket.open(protocol, ec);
     if (ec) return CURL_SOCKET_BAD;
     const curl_socket_t fd = state->socket.native_handle();
@@ -401,7 +419,7 @@ class Client {
     const auto it = self->sockets_.find(fd);
     if (it == self->sockets_.end()) return 1;
     it->second->watch = 0;
-    std::error_code ignored;
+    error_code ignored;
     it->second->socket.close(ignored);
     self->sockets_.erase(it);
     return 0;
@@ -429,33 +447,33 @@ class Client {
     if ((state->watch & CURL_POLL_IN) && !state->read_armed) {
       state->read_armed = true;
       state->socket.async_wait(
-          asio::ip::tcp::socket::wait_read,
-          asio::bind_allocator(asio::recycling_allocator<void>(),
-                               [this, w = std::weak_ptr<SocketState>(state),
-                                fd](std::error_code ec) {
-                                 on_event(w, fd, CURL_CSELECT_IN, ec);
-                               }));
+          net::ip::tcp::socket::wait_read,
+          net::bind_allocator(
+              net::recycling_allocator<void>(),
+              [this, w = std::weak_ptr<SocketState>(state), fd](error_code ec) {
+                on_event(w, fd, CURL_CSELECT_IN, ec);
+              }));
     }
     if ((state->watch & CURL_POLL_OUT) && !state->write_armed) {
       state->write_armed = true;
       state->socket.async_wait(
-          asio::ip::tcp::socket::wait_write,
-          asio::bind_allocator(asio::recycling_allocator<void>(),
-                               [this, w = std::weak_ptr<SocketState>(state),
-                                fd](std::error_code ec) {
-                                 on_event(w, fd, CURL_CSELECT_OUT, ec);
-                               }));
+          net::ip::tcp::socket::wait_write,
+          net::bind_allocator(
+              net::recycling_allocator<void>(),
+              [this, w = std::weak_ptr<SocketState>(state), fd](error_code ec) {
+                on_event(w, fd, CURL_CSELECT_OUT, ec);
+              }));
     }
   }
 
   void on_event(const std::weak_ptr<SocketState>& weak, curl_socket_t fd,
-                int flag, std::error_code ec) {
+                int flag, error_code ec) {
     // The shared_ptr keeps the state alive across the socket_action call
     // below, which may close this very socket via close_socket_cb.
     const auto state = weak.lock();
     if (!state) return;
     (flag == CURL_CSELECT_IN ? state->read_armed : state->write_armed) = false;
-    if (ec == asio::error::operation_aborted) return;
+    if (ec == net::error::operation_aborted) return;
     curl_multi_socket_action(multi_, fd, ec ? CURL_CSELECT_ERR : flag,
                              &running_);
     check_completions();
@@ -475,13 +493,13 @@ class Client {
       // and we may not call curl back from inside its own callback.
       if (!self->kick_pending_) {
         self->kick_pending_ = true;
-        asio::post(self->io_,
-                   asio::bind_allocator(asio::recycling_allocator<void>(),
-                                        [self, alive = self->alive_] {
-                                          if (!*alive) return;
-                                          self->kick_pending_ = false;
-                                          self->kick();
-                                        }));
+        net::post(self->io_,
+                  net::bind_allocator(net::recycling_allocator<void>(),
+                                      [self, alive = self->alive_] {
+                                        if (!*alive) return;
+                                        self->kick_pending_ = false;
+                                        self->kick();
+                                      }));
       }
       return 0;
     }
@@ -494,12 +512,12 @@ class Client {
     self->timer_.expires_at(deadline);
     self->timer_armed_ = true;
     self->timer_.async_wait(
-        asio::bind_allocator(asio::recycling_allocator<void>(),
-                             [self, alive = self->alive_](std::error_code ec) {
-                               if (ec || !*alive) return;
-                               self->timer_armed_ = false;
-                               self->kick();
-                             }));
+        net::bind_allocator(net::recycling_allocator<void>(),
+                            [self, alive = self->alive_](error_code ec) {
+                              if (ec || !*alive) return;
+                              self->timer_armed_ = false;
+                              self->kick();
+                            }));
     return 0;
   }
 
@@ -532,9 +550,8 @@ class Client {
       }
       transfers_.erase(t->self);
 
-      const std::error_code ec = curl_code == CURLE_OK
-                                     ? std::error_code{}
-                                     : make_error_code(curl_code);
+      const error_code ec =
+          curl_code == CURLE_OK ? error_code{} : make_error_code(curl_code);
       // Single-threaded by contract: the handler's executor is this
       // io_context, where we already are — invoke without the
       // type-erased dispatch hop.
@@ -542,9 +559,9 @@ class Client {
     }
   }
 
-  asio::io_context& io_;
+  net::io_context& io_;
   CURLM* multi_;
-  asio::steady_timer timer_;
+  net::steady_timer timer_;
   std::unordered_map<curl_socket_t, std::shared_ptr<SocketState>> sockets_;
   std::list<Transfer> transfers_;
   std::vector<CURL*> pool_;

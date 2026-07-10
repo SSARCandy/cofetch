@@ -100,7 +100,9 @@ fires later via `client.async_perform(std::move(req), token)`.
 
 Requirements: a C++17 compiler (the `co_await` interface needs C++20),
 libcurl ≥ 7.80 (dev headers), and
-[standalone ASIO](https://github.com/chriskohlhoff/asio).
+[standalone ASIO](https://github.com/chriskohlhoff/asio) — or
+Boost.Asio, via `-DCOFETCH_USE_BOOST_ASIO=ON` (`cofetch::error_code`
+then follows the flavor: `std::` or `boost::system::`).
 
 ### CMake (FetchContent)
 

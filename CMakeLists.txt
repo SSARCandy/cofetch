@@ -9,6 +9,7 @@ else()
 endif()
 
 option(COFETCH_USE_VENDORED_ASIO "Use the asio submodule under vendor/" ${COFETCH_TOP_LEVEL})
+option(COFETCH_USE_BOOST_ASIO "Build against Boost.Asio instead of standalone asio" OFF)
 option(COFETCH_BUILD_EXAMPLES "Build example programs" ${COFETCH_TOP_LEVEL})
 option(COFETCH_BUILD_TESTS "Build unit tests (needs vendor/googletest)" OFF)
 option(COFETCH_BUILD_BENCH "Build benchmarks (fetches cpr and cpp-httplib)" OFF)
@@ -24,7 +25,11 @@ target_include_directories(cofetch INTERFACE
 target_compile_features(cofetch INTERFACE cxx_std_17)
 target_link_libraries(cofetch INTERFACE CURL::libcurl Threads::Threads)
 
-if(COFETCH_USE_VENDORED_ASIO)
+if(COFETCH_USE_BOOST_ASIO)
+    find_package(Boost REQUIRED)
+    target_link_libraries(cofetch INTERFACE Boost::headers)
+    target_compile_definitions(cofetch INTERFACE COFETCH_USE_BOOST_ASIO)
+elseif(COFETCH_USE_VENDORED_ASIO)
     target_include_directories(cofetch SYSTEM INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/asio/include>)
 endif()

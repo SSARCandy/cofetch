@@ -34,6 +34,23 @@ jobs:
           done
           COFETCH_ECHO=http://127.0.0.1:18089 ./cxx17_smoke
 
+  boost-asio:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libcurl and boost
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libcurl4-openssl-dev libboost-dev
+      - name: Build smoke test against Boost.Asio
+        run: g++ -std=c++17 -Wall -Wextra -DCOFETCH_USE_BOOST_ASIO -Iinclude test/cxx17_smoke.cpp -lcurl -o boost_smoke
+      - name: Run against local echo server
+        run: |
+          python3 test/echo_server.py --port 18089 &
+          for _ in $(seq 1 50); do
+            curl -s -o /dev/null http://127.0.0.1:18089/get && break
+            sleep 0.1
+          done
+          COFETCH_ECHO=http://127.0.0.1:18089 ./boost_smoke
+
   docs:
     runs-on: ubuntu-24.04
     steps:

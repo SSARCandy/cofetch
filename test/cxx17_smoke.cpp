@@ -1,6 +1,13 @@
 // Compiled as -std=c++17 in CI to guarantee the header stays C++17-clean:
 // callbacks, the fluent chain, and deferred composition without coroutines.
+// Also compiled with -DCOFETCH_USE_BOOST_ASIO to guard the Boost.Asio build.
+#if defined(COFETCH_USE_BOOST_ASIO)
+#include <boost/asio.hpp>
+namespace anet = boost::asio;
+#else
 #include <asio.hpp>
+namespace anet = asio;
+#endif
 //
 #include <cofetch.h>
 
@@ -18,15 +25,15 @@ int main() {
   }
   const std::string base = echo;
 
-  asio::io_context io;
+  anet::io_context io;
   cofetch::Client client(io);
   bool ok = false;
 
   auto chain = client.request(base + "/post")
                    .body("x=1")
-                   .post(asio::deferred)(
-                       asio::deferred([&](std::error_code, cofetch::Response) {
-                         return client.async_get(base + "/get", asio::deferred);
+                   .post(anet::deferred)(
+                       anet::deferred([&](std::error_code, cofetch::Response) {
+                         return client.async_get(base + "/get", anet::deferred);
                        }));
   std::move(chain)([&](std::error_code ec, cofetch::Response res) {
     ok = !ec && res.is_ok();
