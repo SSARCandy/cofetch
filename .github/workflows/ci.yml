@@ -44,11 +44,24 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq doxygen
       - name: Generate API reference
         run: doxygen Doxyfile
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: api-docs
           path: docs/api/html
+
+  deploy-docs:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: docs
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
 
   coverage:
     runs-on: ubuntu-24.04
