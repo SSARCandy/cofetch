@@ -29,72 +29,34 @@ const auto posts = co_await client.async_post(api + "/posts", user.data_,
 
 ## Why cofetch
 
-- **ASIO-native.** Requests run on the `asio::io_context` you already
-  own — compose with timers, sockets, and other coroutines. Drive it
+- **Header-only.** `#include "http/cofetch.h"`, link against libcurl, done.
+- **Chainable syntax.** Build a request with setters, fire it with the
+  HTTP verb — the same chain works with callbacks, futures, or
+  coroutines.
+- **ASIO-native.** Requests run on the `asio::io_context`. Drive it
   with `run()`, or `poll()` it from a busy loop that must never block
   (the trading hot path this library grew out of).
 - **libcurl underneath.** HTTP/1.1 and HTTP/2 multiplexing, TLS,
-  compression, connection pooling, proxy support — two decades of
-  protocol maturity instead of a hand-rolled client.
-- **fetch()-like error model.** Transport failures arrive as
-  `std::error_code` (curl error category); HTTP 4xx/5xx are *responses*,
-  not errors — check `res.is_ok()`.
+  compression, connection pooling, proxy support.
 - **C++17-friendly.** The full API — chains, callbacks, futures,
-  `deferred` — works on C++17 (CI-enforced); C++20 adds the `co_await`
-  interface.
-- **Header-only.** `#include "http/cofetch.h"`, link against libcurl,
-  done.
+  `deferred` — works on C++17; C++20 adds the `co_await` interface.
 
 ## Benchmarks
 
-Local nginx on Debian (WSL2, 20 cores), gcc 14 `-O3`. Every client
-does the **same 20,000 GETs**, so wall-clock time is directly
-comparable. Zero-latency loopback measures client CPU overhead, not
-the network. Reproduce with `bench/run_bench.sh`.
+Same workload for every client — 20,000 GETs against a local nginx.
+[cpr](https://github.com/libcpr/cpr) and
+[cpp-httplib](https://github.com/yhirose/cpp-httplib) are synchronous
+(one request per thread); cofetch keeps 100 in flight on a single
+thread, and with one event loop per core it outruns equal-sized thread
+pools by ~60%.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark-dark.svg">
   <img alt="cofetch benchmark results" src="docs/benchmark-light.svg">
 </picture>
 
-A sync client ([cpr](https://github.com/libcpr/cpr),
-[cpp-httplib](https://github.com/yhirose/cpp-httplib)) drives one
-request per thread, so its single-thread bar is serial; cofetch keeps
-100 in flight on that same thread — that is the point of async. With
-one event loop per core, cofetch outruns equal-sized thread pools by
-~60%. The chain scenario is per-request latency; concurrency cannot
-hide it.
-
-<details>
-<summary>Exact numbers</summary>
-
-**One thread each, 20,000 GETs**
-
-| client | in flight | time | req/s |
-|---|---:|---:|---:|
-| cofetch (callbacks, `run()`) | 100 | 1.30 s | 15,388 |
-| cofetch (callbacks, busy-`poll()`) | 100 | 1.27 s | 15,794 |
-| cpr (sync session) | 1 | 1.93 s | 10,367 |
-| cpp-httplib (sync client) | 1 | 1.52 s | 13,186 |
-
-**One thread per core (20 threads each), 20,000 GETs**
-
-| client | threads | time | req/s |
-|---|---:|---:|---:|
-| cofetch (one event loop per core) | 20 | 0.10 s | 200,594 |
-| cpr (thread pool) | 20 | 0.17 s | 120,055 |
-| cpp-httplib (thread pool) | 20 | 0.16 s | 127,565 |
-
-**Sequential chain, 2,000 dependent requests, one thread**
-
-| client | time | req/s |
-|---|---:|---:|
-| cofetch (callback chain) | 0.19 s | 10,466 |
-| cofetch (coroutine chain) | 0.20 s | 10,254 |
-| cpr | 0.20 s | 10,224 |
-| cpp-httplib | 0.16 s | 12,604 |
-
-</details>
+Exact numbers, environment, and how to reproduce:
+[bench/README.md](bench/README.md).
 
 ## Quick start
 
@@ -107,15 +69,16 @@ int main() {
   asio::io_context io;
   cofetch::Client client(io);
 
-  client.request("https://postman-echo.com/post")
-      .body("hello=cofetch")
-      .post([](std::error_code ec, cofetch::Response res) {
-        if (ec) {
-          std::cerr << ec.message() << "\n";  // DNS, TLS, timeout...
-          return;
-        }
-        std::cout << res.http_code_ << " " << res.data_ << "\n";
-      });
+  client
+    .request("https://postman-echo.com/post")
+    .body("hello=cofetch")
+    .post([](std::error_code ec, cofetch::Response res) {
+      if (ec) {
+        std::cerr << ec.message() << "\n";  // DNS, TLS, timeout...
+        return;
+      }
+      std::cout << res.http_code_ << " " << res.data_ << "\n";
+    });
 
   io.run();  // or io.poll() from your own loop — see examples/example03.cpp
 }
@@ -124,15 +87,8 @@ int main() {
 On C++20 the same flow reads linearly with `co_await`
 (`examples/example02.cpp`).
 
-Requests are plain values too — build one ahead of time, fire it later:
-
-```cpp
-cofetch::Request req("https://api.example.com/orders");
-req.method(cofetch::Request::Method::POST)
-   .headers({"content-type: application/json", "x-api-key: k"})
-   .body(R"({"qty": 1})");
-client.async_perform(std::move(req), token);
-```
+Prefer a plain value? `cofetch::Request` holds the same fields and
+fires later via `client.async_perform(std::move(req), token)`.
 
 ## Installation
 
@@ -175,11 +131,6 @@ Copy `http/cofetch.h`, add asio to your include path, link `libcurl`.
 git submodule update --init          # asio + googletest (dev only)
 ./build.sh -t                        # Debug build + tests + coverage
 ./linter.sh                          # clang-format check (v19 pinned in CI)
-bench/run_bench.sh | tee bench/results.csv        # bench vs local nginx
-python3 bench/plot_bench.py bench/results.csv -o docs  # regen README charts
-COFETCH_LIVE_TESTS=1 ./build.sh -t   # also run live-network tests
-./build/examples/example03 run       # reactor tour: run|poll|foreign;
-                                     # example03_uring = same code on io_uring
 ```
 
 CI runs the linter, the offline test suite (local echo server, no
