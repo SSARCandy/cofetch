@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format 19
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang-format-19
+      - name: clang-format check
+        run: CLANG_FORMAT=clang-format-19 ./linter.sh
+
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-24.04
+            cc: clang
+            cxx: clang++
+          - os: macos-latest
+            cc: clang
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install libcurl (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libcurl4-openssl-dev
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCOFETCH_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Run tests against local echo server
+        run: |
+          python3 test/echo_server.py --port 18089 &
+          for _ in $(seq 1 50); do
+            curl -s -o /dev/null http://127.0.0.1:18089/get && break
+            sleep 0.1
+          done
+          COFETCH_ECHO=http://127.0.0.1:18089 ./build/test/all_test

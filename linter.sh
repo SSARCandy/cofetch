@@ -16,14 +16,17 @@ elif command -v diff > /dev/null; then
 	DIFF_EXE=$(command -v diff)
 fi
 
-if command -v clang-format > /dev/null; then
+if [ -n "${CLANG_FORMAT}" ] && command -v "${CLANG_FORMAT}" > /dev/null; then
+	# CI pins an exact version, e.g. CLANG_FORMAT=clang-format-19
+	CLANG_FORMATTER=$(command -v "${CLANG_FORMAT}")
+elif command -v clang-format > /dev/null; then
 	CLANG_FORMATTER=$(command -v clang-format)
 else
 	echo -e "Missing clang-format, please install it with: \n    ${COLOR_BLUE}sudo apt-get install clang-format${COLOR_REST}"
 	exit 1
 fi
 
-file_list=$(find http test examples \( -name '*.h' -or -name '*.cpp' \))
+file_list=$(find http test examples bench \( -name '*.h' -or -name '*.cpp' \) -not -path 'bench/baseline/*')
 return_code=0
 for f in ${file_list}; do
     checker_cmd="${DIFF_EXE} -u <(cat ${f}) <(${CLANG_FORMATTER} ${f} -style=file)"
