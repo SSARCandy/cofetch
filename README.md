@@ -89,7 +89,7 @@ Requirements:
 include(FetchContent)
 FetchContent_Declare(cofetch
     GIT_REPOSITORY https://github.com/SSARCandy/cofetch.git
-    GIT_TAG v0.1.1
+    GIT_TAG v0.1.2
 )
 FetchContent_MakeAvailable(cofetch)
 target_link_libraries(your_app PRIVATE cofetch::cofetch)
