@@ -66,6 +66,7 @@ TEST(Local, transport_error) {
                                       asio::as_tuple(asio::use_awaitable));
         EXPECT_TRUE(static_cast<bool>(ec));
         EXPECT_TRUE(ec.category() == cofetch::curl_category());
+        EXPECT_FALSE(ec.message().empty());
         EXPECT_FALSE(res.is_ok());
         done = true;
       },
@@ -211,6 +212,104 @@ TEST(Local, use_future) {
   io.run();
   const Response res = fut.get();
   EXPECT_TRUE(res.is_ok());
+}
+
+TEST(Local, put_and_del_verbs) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  asio::co_spawn(
+      io,
+      [&]() -> asio::awaitable<void> {
+        const auto put = co_await client.request(echo_base() + "/put")
+                             .body("v=1")
+                             .put(asio::use_awaitable);
+        EXPECT_TRUE(put.is_ok());
+        EXPECT_NE(std::string::npos, put.data_.find("\"PUT\""));
+        EXPECT_NE(std::string::npos, put.data_.find("v=1"));
+
+        const auto del = co_await client.request(echo_base() + "/delete")
+                             .del(asio::use_awaitable);
+        EXPECT_TRUE(del.is_ok());
+        EXPECT_NE(std::string::npos, del.data_.find("\"DELETE\""));
+        done = true;
+      },
+      asio::detached);
+  io.run();
+  EXPECT_TRUE(done);
+}
+
+TEST(Local, timeout_is_transport_error) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  client.request(echo_base() + "/delay/3")
+      .timeout(std::chrono::seconds(1))
+      .get([&](std::error_code ec, Response res) {
+        EXPECT_EQ(static_cast<int>(CURLE_OPERATION_TIMEDOUT), ec.value());
+        EXPECT_TRUE(ec.category() == cofetch::curl_category());
+        EXPECT_FALSE(res.is_ok());
+        done = true;
+      });
+  io.run();
+  EXPECT_TRUE(done);
+}
+
+// 70 concurrent transfers exceed the 64-handle pool cap, exercising both
+// handle reuse and the overflow cleanup path.
+TEST(Local, concurrent_burst_beyond_pool_cap) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  constexpr int kBurst = 70;
+  int completed = 0;
+  for (int i = 0; i < kBurst; ++i) {
+    client.async_get(echo_base() + "/get",
+                     [&](std::error_code ec, Response res) {
+                       EXPECT_FALSE(ec);
+                       EXPECT_TRUE(res.is_ok());
+                       ++completed;
+                     });
+  }
+  io.poll();  // process the kick-start so the transfers are in flight
+  EXPECT_LT(0, client.pending_requests());
+  io.run();
+  EXPECT_EQ(kBurst, completed);
+  EXPECT_EQ(0, client.pending_requests());
+}
+
+TEST(Local, post_empty_body) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  auto fut = client.async_post(echo_base() + "/post", "", asio::use_future);
+  io.run();
+  const Response res = fut.get();
+  EXPECT_TRUE(res.is_ok());
+  EXPECT_NE(std::string::npos, res.data_.find("\"data\": \"\""));
+}
+
+// Documented destructor semantics: in-flight requests are dropped and
+// their handlers never run — and nothing crashes afterwards.
+TEST(Local, inflight_dropped_on_destruction) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  bool invoked = false;
+  {
+    Client client(io);
+    client.async_get(echo_base() + "/get",
+                     [&](std::error_code, Response) { invoked = true; });
+  }
+  io.run();
+  EXPECT_FALSE(invoked);
+}
+
+TEST(Local, response_defaults_and_error_text) {
+  const Response res;
+  EXPECT_FALSE(res.is_ok());  // http_code_ 0 is not a 2xx
+  EXPECT_STREQ("No error", res.error());
 }
 
 TEST(Live, get_over_tls) {

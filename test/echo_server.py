@@ -3,10 +3,12 @@
 
 Endpoints:
   ANY /status/<code>  -> responds with that HTTP status
+  ANY /delay/<secs>   -> sleeps up to 10s, then echoes
   ANY <path>          -> 200 with JSON echo of method/url/headers/body
 """
 import argparse
 import json
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -19,6 +21,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _respond(self):
         body = self._read_body()
+        if self.path.startswith("/delay/"):
+            time.sleep(min(float(self.path.rsplit("/", 1)[1]), 10.0))
         if self.path.startswith("/status/"):
             status = int(self.path.rsplit("/", 1)[1])
             payload = b"{}"
@@ -45,8 +49,13 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class Server(ThreadingHTTPServer):
+    request_queue_size = 128  # default 5 rejects concurrent bursts
+    daemon_threads = True
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=18089)
     args = parser.parse_args()
-    ThreadingHTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
+    Server(("127.0.0.1", args.port), Handler).serve_forever()
