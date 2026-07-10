@@ -43,7 +43,10 @@ jobs:
       - name: Install doxygen
         run: sudo apt-get update -qq && sudo apt-get install -y -qq doxygen
       - name: Generate API reference
-        run: doxygen Doxyfile
+        run: |
+          doxygen Doxyfile
+          mkdir -p docs/api/html/docs
+          cp docs/benchmark-docs.svg docs/api/html/docs/benchmark-light.svg
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

@@ -2,7 +2,12 @@
 # Output: docs/api/html/index.html
 PROJECT_NAME           = cofetch
 PROJECT_BRIEF          = "Chainable, high-performance async HTTP client for C++ event loops"
-INPUT                  = include/cofetch.h
+# The benchmark chart is copied next to the output post-run (see
+# ci.yml): the README's <picture> is stripped down to its <img>, whose
+# path is relative to the repo root, and the docs site needs the
+# opaque variant so the chart stays readable in dark mode.
+INPUT                  = include/cofetch.h README.md
+USE_MDFILE_AS_MAINPAGE = README.md
 OUTPUT_DIRECTORY       = docs/api
 GENERATE_LATEX         = NO
 EXTRACT_ALL            = YES

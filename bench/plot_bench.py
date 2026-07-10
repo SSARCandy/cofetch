@@ -54,7 +54,7 @@ def load(path):
     return rows
 
 
-def render(rows, path, dark):
+def render(rows, path, dark, transparent=True):
     fg = "#e6edf3" if dark else "#1f2328"
     muted = "#8b949e" if dark else "#57606a"
     plt.rcParams.update({
@@ -94,7 +94,8 @@ def render(rows, path, dark):
 
     fig.text(0.99, 0.005, "requests / second — higher is better",
              ha="right", color=muted, fontsize=9)
-    fig.savefig(path, transparent=True, bbox_inches="tight")
+    fig.savefig(path, transparent=transparent, bbox_inches="tight",
+                facecolor="white" if not transparent else "auto")
     plt.close(fig)
 
 
@@ -108,6 +109,9 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
     render(rows, os.path.join(args.outdir, "benchmark-light.svg"), dark=False)
     render(rows, os.path.join(args.outdir, "benchmark-dark.svg"), dark=True)
+    # Opaque variant for the doxygen site, readable on any theme.
+    render(rows, os.path.join(args.outdir, "benchmark-docs.svg"), dark=False,
+           transparent=False)
     render(rows, os.path.join(args.outdir, "benchmark.png"), dark=False)
     print(f"wrote benchmark-{{light,dark}}.svg to {args.outdir}/")
 

@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/SSARCandy/cofetch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SSARCandy/cofetch/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/SSARCandy/cofetch/graph/badge.svg)](https://codecov.io/gh/SSARCandy/cofetch)
+[![Documentation](https://img.shields.io/badge/docs-online-informational?style=flat&link=https://ssarcandy.tw/cofetch)](https://ssarcandy.tw/cofetch)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 
 Requests **build as a chain** — setters flow off `request()` and the
@@ -59,7 +61,7 @@ from a busy-poll loop.
 </picture>
 
 Exact numbers, environment, and how to reproduce:
-[bench/README.md](bench/README.md).
+[bench/README.md](https://github.com/SSARCandy/cofetch/tree/main/bench).
 
 ## Quick start
 
