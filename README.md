@@ -191,6 +191,8 @@ git submodule update --init          # asio + googletest (dev only)
 ./linter.sh                          # clang-format check (v19 pinned in CI)
 bench/run_bench.sh                   # benchmarks against local nginx
 COFETCH_LIVE_TESTS=1 ./build.sh -t   # also run live-network tests
+./build/examples/example03 run       # reactor tour: run|poll|foreign;
+                                     # example03_uring = same code on io_uring
 ```
 
 CI runs the linter and the offline test suite (local echo server, no
