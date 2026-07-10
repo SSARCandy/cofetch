@@ -1,4 +1,6 @@
 #include <asio.hpp>
+#include <cstdlib>
+#include <string>
 
 #include "gtest/gtest.h"
 #include "http/cofetch.h"
@@ -7,21 +9,42 @@ using cofetch::Client;
 using cofetch::Request;
 using cofetch::Response;
 
-// NOTE: only EXPECT_* inside coroutines; ASSERT_* expands to a plain
-// `return;`, which does not compile in a coroutine body.
+// NOTE: only EXPECT_* inside coroutines; ASSERT_* and GTEST_SKIP() expand to
+// a plain `return;`, which does not compile in a coroutine body.
 namespace {
 
-TEST(Cofetch, get_coroutine) {
+std::string env(const char* name) {
+  const char* v = std::getenv(name);
+  return v ? v : "";
+}
+
+// Local.* tests hit test/echo_server.py; build.sh and CI start it and
+// export COFETCH_ECHO (e.g. http://127.0.0.1:18089).
+std::string echo_base() { return env("COFETCH_ECHO"); }
+
+#define COFETCH_REQUIRE_ECHO()                                          \
+  if (echo_base().empty()) {                                            \
+    GTEST_SKIP() << "COFETCH_ECHO not set (start test/echo_server.py)"; \
+  }
+
+// Live.* tests reach real endpoints; opt in with COFETCH_LIVE_TESTS=1.
+#define COFETCH_REQUIRE_LIVE()                                            \
+  if (env("COFETCH_LIVE_TESTS") != "1") {                                 \
+    GTEST_SKIP() << "set COFETCH_LIVE_TESTS=1 to run live-network tests"; \
+  }
+
+TEST(Local, get_coroutine) {
+  COFETCH_REQUIRE_ECHO();
   asio::io_context io;
   Client client(io);
   bool done = false;
   asio::co_spawn(
       io,
       [&]() -> asio::awaitable<void> {
-        const auto res = co_await client.async_get(
-            "https://postman-echo.com/get", asio::use_awaitable);
+        const auto res = co_await client.async_get(echo_base() + "/get",
+                                                   asio::use_awaitable);
         EXPECT_TRUE(res.is_ok());
-        EXPECT_LT(0u, res.data_.length());
+        EXPECT_NE(std::string::npos, res.data_.find("/get"));
         EXPECT_LT(0u, res.header_data_.length());
         done = true;
       },
@@ -30,7 +53,7 @@ TEST(Cofetch, get_coroutine) {
   EXPECT_TRUE(done);
 }
 
-TEST(Cofetch, transport_error) {
+TEST(Local, transport_error) {
   asio::io_context io;
   Client client(io);
   bool done = false;
@@ -50,22 +73,34 @@ TEST(Cofetch, transport_error) {
   EXPECT_TRUE(done);
 }
 
-TEST(Cofetch, post_with_headers_and_body) {
+TEST(Local, http_error_status_is_not_transport_error) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  auto fut = client.async_get(echo_base() + "/status/404", asio::use_future);
+  io.run();
+  const Response res = fut.get();  // no throw: transport succeeded
+  EXPECT_FALSE(res.is_ok());
+  EXPECT_EQ(404, res.http_code_);
+}
+
+TEST(Local, post_with_headers_and_body) {
+  COFETCH_REQUIRE_ECHO();
   asio::io_context io;
   Client client(io);
   bool done = false;
   asio::co_spawn(
       io,
       [&]() -> asio::awaitable<void> {
-        const auto res = co_await client.async_perform(
-            Request("https://postman-echo.com/post")
-                .method(Request::Method::POST)
-                .headers({"x-api-test: hello"})
-                .body("b=123"),
-            asio::use_awaitable);
+        const auto res =
+            co_await client.async_perform(Request(echo_base() + "/post")
+                                              .method(Request::Method::POST)
+                                              .headers({"x-api-test: hello"})
+                                              .body("b=123"),
+                                          asio::use_awaitable);
         EXPECT_TRUE(res.is_ok());
         EXPECT_NE(std::string::npos, res.data_.find("hello"));
-        EXPECT_NE(std::string::npos, res.data_.find("123"));
+        EXPECT_NE(std::string::npos, res.data_.find("b=123"));
         done = true;
       },
       asio::detached);
@@ -73,7 +108,8 @@ TEST(Cofetch, post_with_headers_and_body) {
   EXPECT_TRUE(done);
 }
 
-TEST(Cofetch, sequential_chain) {
+TEST(Local, sequential_chain) {
+  COFETCH_REQUIRE_ECHO();
   asio::io_context io;
   Client client(io);
   bool done = false;
@@ -81,14 +117,13 @@ TEST(Cofetch, sequential_chain) {
       io,
       [&]() -> asio::awaitable<void> {
         const auto first = co_await client.async_get(
-            "https://postman-echo.com/get?token=42", asio::use_awaitable);
+            echo_base() + "/get?token=42", asio::use_awaitable);
         EXPECT_TRUE(first.is_ok());
-        EXPECT_NE(std::string::npos, first.data_.find("42"));
+        EXPECT_NE(std::string::npos, first.data_.find("token=42"));
 
         // The second request depends on the first: linear code, no nesting.
-        const auto second =
-            co_await client.async_post("https://postman-echo.com/post",
-                                       "from_first=42", asio::use_awaitable);
+        const auto second = co_await client.async_post(
+            echo_base() + "/post", "from_first=42", asio::use_awaitable);
         EXPECT_TRUE(second.is_ok());
         EXPECT_NE(std::string::npos, second.data_.find("from_first"));
         done = true;
@@ -98,12 +133,13 @@ TEST(Cofetch, sequential_chain) {
   EXPECT_TRUE(done);
 }
 
-TEST(Cofetch, callback_busy_poll) {
+TEST(Local, callback_busy_poll) {
+  COFETCH_REQUIRE_ECHO();
   asio::io_context io;
   Client client(io);
   int completed = 0;
   for (int i = 0; i < 5; ++i) {
-    client.async_get("https://postman-echo.com/get",
+    client.async_get(echo_base() + "/get",
                      [&](std::error_code ec, Response res) {
                        EXPECT_FALSE(ec);
                        EXPECT_TRUE(res.is_ok());
@@ -116,13 +152,38 @@ TEST(Cofetch, callback_busy_poll) {
   EXPECT_EQ(5, completed);
 }
 
-TEST(Cofetch, use_future) {
+TEST(Local, use_future) {
+  COFETCH_REQUIRE_ECHO();
   asio::io_context io;
   Client client(io);
-  auto fut = client.async_get("https://postman-echo.com/get", asio::use_future);
+  auto fut = client.async_get(echo_base() + "/get", asio::use_future);
   io.run();
   const Response res = fut.get();
   EXPECT_TRUE(res.is_ok());
+}
+
+TEST(Live, get_over_tls) {
+  COFETCH_REQUIRE_LIVE();
+  asio::io_context io;
+  Client client(io);
+  auto fut = client.async_get("https://fapi.binance.com/fapi/v1/time",
+                              asio::use_future);
+  io.run();
+  const Response res = fut.get();
+  EXPECT_TRUE(res.is_ok());
+  EXPECT_NE(std::string::npos, res.data_.find("serverTime"));
+}
+
+TEST(Live, post_echo) {
+  COFETCH_REQUIRE_LIVE();
+  asio::io_context io;
+  Client client(io);
+  auto fut = client.async_post("https://postman-echo.com/post", "b=123",
+                               asio::use_future);
+  io.run();
+  const Response res = fut.get();
+  EXPECT_TRUE(res.is_ok());
+  EXPECT_NE(std::string::npos, res.data_.find("b=123"));
 }
 
 }  // namespace

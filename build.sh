@@ -39,8 +39,20 @@ clean() {
 }
 
 test() {
+    ECHO_PORT=18089
+    python3 "${CURDIR}/test/echo_server.py" --port "${ECHO_PORT}" &
+    ECHO_PID=$!
+    trap 'kill ${ECHO_PID} 2>/dev/null' EXIT
+    for _ in $(seq 1 50); do
+        curl -s -o /dev/null "http://127.0.0.1:${ECHO_PORT}/get" && break
+        sleep 0.1
+    done
+
     cd ./build/test;
-    ./all_test
+    if ! COFETCH_ECHO="http://127.0.0.1:${ECHO_PORT}" ./all_test; then
+        cd $CURDIR
+        exit 1
+    fi
     cd $CURDIR;
 
     # lcov 2.x hard-errors on line inconsistencies from gcc-14 coroutine code
@@ -91,6 +103,9 @@ while (( "$#" )); do
 done
 
 BUILD_OPTIONS="-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
+if [ "${BUILD_TYPE}" == "Debug" ]; then
+    BUILD_OPTIONS="${BUILD_OPTIONS} -DCOFETCH_BUILD_TESTS=ON"
+fi
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 if cmake .. ${BUILD_OPTIONS}; then
