@@ -1,18 +1,13 @@
-INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/vendor/googletest/googletest/include)
-
-enable_testing()
-
 macro(add_unittest TEST_NAME)
     add_executable(${TEST_NAME} ${ARGN})
-
-    # Standard linking to gtest stuff.
     target_link_libraries(
         ${TEST_NAME}
+        cofetch::cofetch
         gtest
         gtest_main
-        curl
-        Threads::Threads
     )
+    target_compile_definitions(${TEST_NAME}
+        PRIVATE COFETCH_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endmacro(add_unittest)
 

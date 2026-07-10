@@ -1,13 +1,6 @@
 macro(add_example NAME)
     add_executable(${NAME} ${ARGN})
-
-    # Standard linking to gtest stuff.
-    target_link_libraries(
-        ${NAME}
-        curl
-        Threads::Threads
-    )
-    add_test(NAME ${NAME} COMMAND ${NAME})
+    target_link_libraries(${NAME} cofetch::cofetch)
 endmacro(add_example)
 
 add_example(example01
