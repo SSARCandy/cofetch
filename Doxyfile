@@ -8,6 +8,7 @@ PROJECT_BRIEF          = "Chainable, high-performance async HTTP client for C++ 
 # opaque variant so the chart stays readable in dark mode.
 INPUT                  = include/cofetch.h \
                          README.md \
+                         docs/api-reference.md \
                          bench/README.md \
                          examples/README.md \
                          docs/examples.dox

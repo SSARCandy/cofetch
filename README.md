@@ -72,7 +72,7 @@ int main() {
 }
 ```
 
-On C++20 the same flow reads linearly with `co_await` (`examples/example_coroutine.cpp`); the full set lives in [examples/](examples/README.md).
+On C++20 the same flow reads linearly with `co_await` (`examples/example_coroutine.cpp`); the full set lives in [examples/](examples/README.md). Every public symbol at a glance: the [API reference](docs/api-reference.md) cheatsheet.
 
 Prefer a plain value? `cofetch::Request` holds the same fields and fires later via `http.async_perform(std::move(req), token)`.
 
