@@ -469,7 +469,11 @@ class Client {
     curl_easy_setopt(eh, CURLOPT_WRITEFUNCTION, body_write_cb);
     curl_easy_setopt(eh, CURLOPT_HEADERFUNCTION, write_cb);
     curl_easy_setopt(eh, CURLOPT_NOSIGNAL, 1L);
+#if LIBCURL_VERSION_NUM >= 0x075000  // 7.80.0
+    // Cap connection reuse age; on older libcurl the option is absent and
+    // pooled connections simply live longer.
     curl_easy_setopt(eh, CURLOPT_MAXLIFETIME_CONN, 30L);
+#endif
     // "" advertises every decoder curl was built with (gzip, br, ...).
     curl_easy_setopt(eh, CURLOPT_ACCEPT_ENCODING, "");
     // Wait for an in-progress connection to the same host and multiplex over
