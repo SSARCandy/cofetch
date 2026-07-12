@@ -112,7 +112,7 @@ class Response {
  */
 class Request {
  public:
-  enum class Method { GET, POST, PUT, DEL };
+  enum class Method { GET, POST, PUT, PATCH, DEL };
 
   explicit Request(std::string url) : url_(std::move(url)) {}
 
@@ -274,6 +274,11 @@ class Client {
                      std::forward<CompletionToken>(token));
     }
     template <typename CompletionToken>
+    auto patch(CompletionToken&& token) {
+      return perform(Request::Method::PATCH,
+                     std::forward<CompletionToken>(token));
+    }
+    template <typename CompletionToken>
     auto del(CompletionToken&& token) {
       return perform(Request::Method::DEL,
                      std::forward<CompletionToken>(token));
@@ -393,6 +398,11 @@ class Client {
         break;
       case Request::Method::PUT:
         curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_easy_setopt(eh, CURLOPT_POST, 1L);
+        set_body(*it);
+        break;
+      case Request::Method::PATCH:
+        curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, "PATCH");
         curl_easy_setopt(eh, CURLOPT_POST, 1L);
         set_body(*it);
         break;

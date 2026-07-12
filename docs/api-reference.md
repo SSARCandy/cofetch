@@ -77,14 +77,15 @@ http.request(url)
 http.request(url).get(token);
 http.request(url).body(b).post(token);
 http.request(url).body(b).put(token);
+http.request(url).body(b).patch(token);
 http.request(url).del(token);
 ```
 
-There is no `patch()` — send PATCH through the escape hatch:
+For any other method, set it through the escape hatch:
 ```cpp
-http.request(url).body(b)
-    .curl([](CURL* h) { curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, "PATCH"); })
-    .post(token);
+http.request(url)
+    .curl([](CURL* h) { curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, "HEAD"); })
+    .get(token);
 ```
 
 ---
@@ -96,7 +97,7 @@ Same setters as the builder, chainable (`Request&`).
 
 ```cpp
 cofetch::Request req("https://example.com");
-req.method(cofetch::Request::Method::POST)   // GET | POST | PUT | DEL
+req.method(cofetch::Request::Method::POST)   // GET | POST | PUT | PATCH | DEL
    .headers({"content-type: text/plain"})
    .body("hello")
    .timeout(std::chrono::seconds(3))
@@ -104,7 +105,7 @@ req.method(cofetch::Request::Method::POST)   // GET | POST | PUT | DEL
    .curl([](CURL* h) { /* per-request libcurl tweaks */ });
 ```
 
-`Request::Method` — `GET`, `POST`, `PUT`, `DEL`.
+`Request::Method` — `GET`, `POST`, `PUT`, `PATCH`, `DEL`.
 
 ---
 

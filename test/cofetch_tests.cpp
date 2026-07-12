@@ -214,7 +214,7 @@ TEST(Local, use_future) {
   EXPECT_TRUE(res.is_ok());
 }
 
-TEST(Local, put_and_del_verbs) {
+TEST(Local, put_patch_del_verbs) {
   COFETCH_REQUIRE_ECHO();
   asio::io_context io;
   Client client(io);
@@ -228,6 +228,13 @@ TEST(Local, put_and_del_verbs) {
         EXPECT_TRUE(put.is_ok());
         EXPECT_NE(std::string::npos, put.data_.find("\"PUT\""));
         EXPECT_NE(std::string::npos, put.data_.find("v=1"));
+
+        const auto patch = co_await client.request(echo_base() + "/patch")
+                               .body("v=2")
+                               .patch(asio::use_awaitable);
+        EXPECT_TRUE(patch.is_ok());
+        EXPECT_NE(std::string::npos, patch.data_.find("\"PATCH\""));
+        EXPECT_NE(std::string::npos, patch.data_.find("v=2"));
 
         const auto del = co_await client.request(echo_base() + "/delete")
                              .del(asio::use_awaitable);

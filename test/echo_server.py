@@ -58,6 +58,7 @@ class Handler(BaseHTTPRequestHandler):
     do_GET = _respond
     do_POST = _respond
     do_PUT = _respond
+    do_PATCH = _respond
     do_DELETE = _respond
 
     def log_message(self, *args):
