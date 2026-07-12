@@ -23,6 +23,11 @@
  */
 
 /**
+ * @example example_sync.cpp
+ * Wrapping the async client in a blocking `SyncClient` facade.
+ */
+
+/**
  * @example example_concurrent.cpp
  * Twenty requests in flight at once on a single thread.
  */
