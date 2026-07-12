@@ -79,7 +79,7 @@ Prefer a plain value? `cofetch::Request` holds the same fields and fires later v
 ## Installation
 
 Requirements:
-- libcurl ≥ 7.80 (dev headers), 
+- libcurl ≥ 7.55 (dev headers)
 - C++17 compiler (the `co_await` interface needs C++20)
 - [ASIO](https://github.com/chriskohlhoff/asio) or Boost.Asio, via `-DCOFETCH_USE_BOOST_ASIO=ON`
 
