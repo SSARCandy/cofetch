@@ -21,8 +21,8 @@ class SyncClient {
     return run(http_.async_get(std::move(url), asio::use_future));
   }
   cofetch::Response post(std::string url, std::string body) {
-    return run(http_.async_post(std::move(url), std::move(body),
-                                asio::use_future));
+    return run(
+        http_.async_post(std::move(url), std::move(body), asio::use_future));
   }
 
  private:
@@ -33,8 +33,8 @@ class SyncClient {
     return pending.get();
   }
 
-  asio::io_context io_;    // declared first: http_ is constructed from it
-  cofetch::Client http_;   // one client, so the pool survives across calls
+  asio::io_context io_;   // declared first: http_ is constructed from it
+  cofetch::Client http_;  // one client, so the pool survives across calls
 };
 
 int main() {
