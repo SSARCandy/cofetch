@@ -10,6 +10,7 @@ endpoints, so they need network access to run.
 | [example_fluent.cpp](https://github.com/SSARCandy/cofetch/blob/main/examples/example_fluent.cpp) | building a POST with the chainable setters |
 | [example_coroutine.cpp](https://github.com/SSARCandy/cofetch/blob/main/examples/example_coroutine.cpp) | dependent requests in linear code (C++20 `co_await`) |
 | [example_future.cpp](https://github.com/SSARCandy/cofetch/blob/main/examples/example_future.cpp) | `std::future` style: start, drive, `get()` |
+| [example_sync.cpp](https://github.com/SSARCandy/cofetch/blob/main/examples/example_sync.cpp) | wrapping the async client in a blocking `SyncClient` facade |
 | [example_concurrent.cpp](https://github.com/SSARCandy/cofetch/blob/main/examples/example_concurrent.cpp) | 20 requests in flight on one thread |
 | [example_errors.cpp](https://github.com/SSARCandy/cofetch/blob/main/examples/example_errors.cpp) | transport errors vs HTTP error statuses |
 | [example_cancellation.cpp](https://github.com/SSARCandy/cofetch/blob/main/examples/example_cancellation.cpp) | a time budget per request with `asio::cancel_after` |
