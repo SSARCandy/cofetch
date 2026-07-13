@@ -39,7 +39,9 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <unordered_map>
 #include <utility>
@@ -78,8 +80,40 @@ inline error_code make_error_code(CURLcode code) {
   return {static_cast<int>(code), curl_category()};
 }
 
+namespace detail {
+
+// HTTP field names are case-insensitive (RFC 9110 §5.1), so the header map
+// hashes and compares them without regard to case. ASCII-only folding — field
+// names are ASCII tokens — which also sidesteps std::tolower's locale and
+// signed-char pitfalls.
+inline char ascii_lower(char c) {
+  return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+struct CiHash {
+  size_t operator()(std::string_view s) const noexcept {
+    size_t h = 0;
+    for (char c : s) h = h * 31 + static_cast<unsigned char>(ascii_lower(c));
+    return h;
+  }
+};
+struct CiEqual {
+  bool operator()(std::string_view a, std::string_view b) const noexcept {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+      if (ascii_lower(a[i]) != ascii_lower(b[i])) return false;
+    }
+    return true;
+  }
+};
+
+}  // namespace detail
+
 class Response {
  public:
+  // Case-insensitive field-name -> value map (see headers()).
+  using Headers = std::unordered_map<std::string, std::string, detail::CiHash,
+                                     detail::CiEqual>;
+
   Response() = default;
   Response(CURLcode curl_code, long http_code, std::string data,
            std::string header_data)
@@ -101,10 +135,74 @@ class Response {
    */
   const char* error() const { return curl_easy_strerror(curl_code_); }
 
+  /**
+   * @brief Parse header_data_ into a case-insensitive name->value map.
+   * Repeated fields are comma-combined (RFC 9110 §5.3). Parsed on demand and
+   * not cached: keep the result if you read it repeatedly, and for a single
+   * field prefer header(), which skips building the whole map. When redirects
+   * are followed, header_data_ (and this map) spans every hop.
+   */
+  Headers headers() const {
+    Headers out;
+    for_each_field([&](std::string_view name, std::string_view value) {
+      const auto [it, inserted] = out.try_emplace(std::string(name), value);
+      if (!inserted) {
+        it->second += ", ";
+        it->second += value;
+      }
+    });
+    return out;
+  }
+
+  /**
+   * @brief Case-insensitive lookup of one field without building the full
+   * map; repeats are comma-combined. std::nullopt when the field is absent.
+   */
+  std::optional<std::string> header(std::string_view name) const {
+    std::optional<std::string> found;
+    for_each_field([&](std::string_view field, std::string_view value) {
+      if (!detail::CiEqual{}(field, name)) return;
+      if (found) {
+        *found += ", ";
+        *found += value;
+      } else {
+        found = std::string(value);
+      }
+    });
+    return found;
+  }
+
   CURLcode curl_code_ = CURLE_OK;
   long http_code_ = 0;
   std::string data_;
   std::string header_data_;
+
+ private:
+  // Iterate the "name: value" fields in header_data_, trimmed, skipping the
+  // status line and blank separators. The views point into header_data_, so
+  // they are valid only for the lifetime of this Response.
+  template <typename F>
+  void for_each_field(F&& f) const {
+    std::string_view sv(header_data_);
+    size_t pos = 0;
+    while (pos < sv.size()) {
+      const size_t nl = sv.find('\n', pos);
+      std::string_view line =
+          sv.substr(pos, (nl == std::string_view::npos ? sv.size() : nl) - pos);
+      pos = (nl == std::string_view::npos) ? sv.size() : nl + 1;
+      if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+      const size_t colon = line.find(':');
+      if (colon == std::string_view::npos) continue;  // status line or blank
+      f(trim(line.substr(0, colon)), trim(line.substr(colon + 1)));
+    }
+  }
+
+  // Strip leading/trailing HTTP optional whitespace (space and htab).
+  static std::string_view trim(std::string_view s) {
+    const auto b = s.find_first_not_of(" \t");
+    if (b == std::string_view::npos) return {};
+    return s.substr(b, s.find_last_not_of(" \t") - b + 1);
+  }
 };
 
 /**

@@ -500,6 +500,42 @@ TEST(Local, response_defaults_and_error_text) {
   EXPECT_STREQ("No error", res.error());
 }
 
+// Parser unit test (no server): status line skipped, case-insensitive keys,
+// repeated fields comma-combined, values trimmed, empty value retained.
+TEST(Response, header_parsing) {
+  const Response res{CURLE_OK, 200, "",
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Type: text/html; charset=utf-8\r\n"
+                     "Set-Cookie: a=1\r\n"
+                     "set-cookie: b=2\r\n"
+                     "X-Empty:\r\n"
+                     "\r\n"};
+
+  const auto h = res.headers();
+  EXPECT_EQ(3u, h.size());  // status line dropped; Set-Cookie folded into one
+  EXPECT_EQ("text/html; charset=utf-8", h.at("content-type"));
+  EXPECT_EQ("text/html; charset=utf-8", h.at("CONTENT-TYPE"));
+  EXPECT_EQ("a=1, b=2", h.at("Set-Cookie"));
+  EXPECT_EQ("", h.at("x-empty"));
+
+  EXPECT_EQ("text/html; charset=utf-8", res.header("Content-Type").value());
+  EXPECT_EQ("a=1, b=2", res.header("set-cookie").value());
+  EXPECT_FALSE(res.header("nonexistent").has_value());
+}
+
+TEST(Local, response_headers_from_server) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  auto fut = client.async_get(echo_base() + "/get", asio::use_future);
+  io.run();
+  const Response res = fut.get();
+  ASSERT_TRUE(res.is_ok());
+  const auto ct = res.header("content-type");  // case-insensitive
+  ASSERT_TRUE(ct.has_value());
+  EXPECT_NE(std::string::npos, ct->find("application/json"));
+}
+
 TEST(Live, get_over_tls) {
   COFETCH_REQUIRE_LIVE();
   asio::io_context io;

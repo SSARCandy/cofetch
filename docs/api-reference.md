@@ -114,18 +114,26 @@ req.method(cofetch::Request::Method::POST)   // GET | POST | PUT | PATCH | DEL
 
 ## cofetch::Response
 
-Delivered to the completion handler; public fields plus two helpers.
+Delivered to the completion handler; public fields plus a few helpers.
 
 ```cpp
 void on_done(cofetch::error_code ec, const cofetch::Response& r) {
-  r.is_ok();       // true when the transfer succeeded AND status is 2xx
-  r.http_code_;    // long     — HTTP status (0 if the transfer failed)
-  r.data_;         // string   — response body (already decompressed)
-  r.header_data_;  // string   — raw response headers
-  r.curl_code_;    // CURLcode — transport result
-  r.error();       // const char* — human-readable transport error
+  r.is_ok();          // true when the transfer succeeded AND status is 2xx
+  r.http_code_;       // long     — HTTP status (0 if the transfer failed)
+  r.data_;            // string   — response body (already decompressed)
+  r.header_data_;     // string   — raw response headers
+  r.curl_code_;       // CURLcode — transport result
+  r.error();          // const char* — human-readable transport error
+
+  r.header("etag");   // optional<string> — one field, case-insensitive
+  r.headers();        // Headers — case-insensitive name->value map
 }
 ```
+
+`headers()` parses `header_data_` on each call into a case-insensitive
+`Response::Headers` map (repeated fields comma-combined, the status line
+dropped). It is not cached, so keep the result if you read it repeatedly; for a
+single field, `header(name)` looks it up without building the whole map.
 
 ---
 
