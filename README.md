@@ -83,6 +83,19 @@ Requirements:
 - C++17 compiler (the `co_await` interface needs C++20)
 - [ASIO](https://github.com/chriskohlhoff/asio) or Boost.Asio, via `-DCOFETCH_USE_BOOST_ASIO=ON`
 
+### vcpkg
+
+cofetch is in the [vcpkg registry](https://github.com/microsoft/vcpkg/tree/master/ports/cofetch); `asio` and `curl` come along as dependencies, so this is the turnkey path:
+
+```bash
+vcpkg install cofetch
+```
+
+```cmake
+find_package(cofetch CONFIG REQUIRED)
+target_link_libraries(your_app PRIVATE cofetch::cofetch)
+```
+
 ### CMake (FetchContent)
 
 ```cmake
