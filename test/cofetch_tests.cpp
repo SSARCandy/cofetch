@@ -264,6 +264,24 @@ TEST(Local, timeout_is_transport_error) {
   EXPECT_TRUE(done);
 }
 
+// A sub-second timeout proves millisecond precision reaches
+// CURLOPT_TIMEOUT_MS: 200ms fires well before the server's 2s delay.
+TEST(Local, sub_second_timeout) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  client.request(echo_base() + "/delay/2")
+      .timeout(std::chrono::milliseconds(200))
+      .get([&](std::error_code ec, const Response& res) {
+        EXPECT_EQ(static_cast<int>(CURLE_OPERATION_TIMEDOUT), ec.value());
+        EXPECT_FALSE(res.is_ok());
+        done = true;
+      });
+  io.run();
+  EXPECT_TRUE(done);
+}
+
 // 70 concurrent transfers exceed the 64-handle pool cap, exercising both
 // handle reuse and the overflow cleanup path.
 TEST(Local, concurrent_burst_beyond_pool_cap) {
@@ -285,6 +303,26 @@ TEST(Local, concurrent_burst_beyond_pool_cap) {
   io.run();
   EXPECT_EQ(kBurst, completed);
   EXPECT_EQ(0, client.pending_requests());
+}
+
+// A custom pool cap is honoured: a burst well above it still completes,
+// exercising handle reuse and overflow cleanup at the configured limit.
+TEST(Local, custom_pool_cap_burst) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io, /*max_pooled_connections=*/8);
+  constexpr int kBurst = 30;
+  int completed = 0;
+  for (int i = 0; i < kBurst; ++i) {
+    client.async_get(echo_base() + "/get",
+                     [&](std::error_code ec, const Response& res) {
+                       EXPECT_FALSE(ec);
+                       EXPECT_TRUE(res.is_ok());
+                       ++completed;
+                     });
+  }
+  io.run();
+  EXPECT_EQ(kBurst, completed);
 }
 
 TEST(Local, post_empty_body) {

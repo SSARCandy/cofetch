@@ -128,7 +128,12 @@ class Request {
     body_ = std::move(b);
     return *this;
   }
-  Request& timeout(std::chrono::seconds t) {
+  /**
+   * @brief Whole-transfer timeout (default 5s), millisecond resolution.
+   * Note libcurl's stock DNS resolver still rounds the name-resolution
+   * phase up to whole seconds.
+   */
+  Request& timeout(std::chrono::milliseconds t) {
     timeout_ = t;
     return *this;
   }
@@ -155,14 +160,21 @@ class Request {
   Method method_ = Method::GET;
   std::vector<std::string> headers_;
   std::string body_;
-  std::chrono::seconds timeout_{5};
+  std::chrono::milliseconds timeout_{std::chrono::seconds{5}};
   long max_redirects_ = 0;  // 0: do not follow redirects
   std::function<void(CURL*)> curl_setup_;
 };
 
 class Client {
  public:
-  explicit Client(net::io_context& io) : io_(io), timer_(io) {
+  /**
+   * @brief Construct a client driven by io. max_pooled_connections caps the
+   * idle easy handles kept for reuse; raise it for servers that keep many
+   * connections hot at once (default 64).
+   */
+  explicit Client(net::io_context& io,
+                  size_t max_pooled_connections = kDefaultMaxPooledHandles)
+      : io_(io), timer_(io), max_pooled_handles_(max_pooled_connections) {
     curl_global_init(CURL_GLOBAL_ALL);
     multi_ = curl_multi_init();
     curl_multi_setopt(multi_, CURLMOPT_SOCKETFUNCTION, socket_cb);
@@ -245,7 +257,7 @@ class Client {
       req_.body(std::move(b));
       return *this;
     }
-    RequestBuilder& timeout(std::chrono::seconds t) {
+    RequestBuilder& timeout(std::chrono::milliseconds t) {
       req_.timeout(t);
       return *this;
     }
@@ -323,9 +335,10 @@ class Client {
     }
   };
 
-  // Idle easy handles kept for reuse; beyond this they are freed so a burst
-  // of concurrent requests does not pin memory forever.
-  static constexpr size_t kMaxPooledHandles = 64;
+  // Default cap on idle easy handles kept for reuse; beyond this they are
+  // freed so a burst of concurrent requests does not pin memory forever.
+  // Overridable per client through the constructor.
+  static constexpr size_t kDefaultMaxPooledHandles = 64;
 
   struct Transfer {
     Transfer(CURL* e, Handler h) : eh(e), handler(std::move(h)) {}
@@ -371,7 +384,7 @@ class Client {
     curl_easy_setopt(eh, CURLOPT_WRITEDATA, &*it);
     curl_easy_setopt(eh, CURLOPT_HEADERDATA, &it->header_buffer);
     curl_easy_setopt(eh, CURLOPT_PRIVATE, &*it);
-    curl_easy_setopt(eh, CURLOPT_TIMEOUT,
+    curl_easy_setopt(eh, CURLOPT_TIMEOUT_MS,
                      static_cast<long>(r.timeout_.count()));
     // Always set: clears the previous transfer's values on pooled handles.
     curl_easy_setopt(eh, CURLOPT_FOLLOWLOCATION,
@@ -451,7 +464,7 @@ class Client {
       // Severed mid-flight: scrub before the handle is reused.
       curl_easy_reset(t.eh);
       configure_handle(t.eh);
-      if (pool_.size() < kMaxPooledHandles) {
+      if (pool_.size() < max_pooled_handles_) {
         pool_.emplace_back(t.eh);
       } else {
         curl_easy_cleanup(t.eh);
@@ -674,7 +687,7 @@ class Client {
         curl_easy_reset(eh);
         configure_handle(eh);
       }
-      if (pool_.size() < kMaxPooledHandles) {
+      if (pool_.size() < max_pooled_handles_) {
         pool_.emplace_back(t->eh);
       } else {
         curl_easy_cleanup(t->eh);
@@ -696,6 +709,7 @@ class Client {
   std::unordered_map<curl_socket_t, std::shared_ptr<SocketState>> sockets_;
   std::list<Transfer> transfers_;
   std::vector<CURL*> pool_;
+  const size_t max_pooled_handles_;  // cap on pool_; set by the constructor
   int running_ = 0;
   std::uint64_t next_transfer_id_ = 0;
   bool kick_pending_ = false;

@@ -22,9 +22,12 @@ The one object you create. Owns the curl multi handle and the connection pool,
 and runs on the `io_context` you hand it. Not thread-safe: one `Client` and its
 `io_context` per thread, and the client must outlive its in-flight requests.
 
-**Construct** — borrows the `io_context`; drive it with `run()`/`poll()`.
+**Construct** — borrows the `io_context`; drive it with `run()`/`poll()`. The
+optional second argument caps how many idle connections stay pooled for reuse
+(default 64) — raise it for high-concurrency servers.
 ```cpp
-cofetch::Client http(io);
+cofetch::Client http(io);       // default: up to 64 idle connections pooled
+cofetch::Client busy(io, 256);  // larger reuse pool for many hot connections
 ```
 
 **`async_get` / `async_post`** — ASIO-style shortcuts for the common cases.
@@ -67,7 +70,7 @@ builder after the verb.
 http.request(url)
     .headers({"content-type: application/json"})  // request headers
     .body("field=value")                          // request body
-    .timeout(std::chrono::seconds(2))             // whole-transfer cap (default 5s)
+    .timeout(std::chrono::milliseconds(1500))     // whole-transfer cap, ms (default 5s)
     .follow_redirects()                           // chase 3xx, ≤30 hops (default: off)
     .curl([](CURL* h) { /* raw handle, runs last */ });
 ```
@@ -100,7 +103,7 @@ cofetch::Request req("https://example.com");
 req.method(cofetch::Request::Method::POST)   // GET | POST | PUT | PATCH | DEL
    .headers({"content-type: text/plain"})
    .body("hello")
-   .timeout(std::chrono::seconds(3))
+   .timeout(std::chrono::milliseconds(2500))
    .follow_redirects(10)
    .curl([](CURL* h) { /* per-request libcurl tweaks */ });
 ```
