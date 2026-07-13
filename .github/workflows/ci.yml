@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Least-privilege default for GITHUB_TOKEN; jobs opt into more as needed
+# (see deploy-docs). https://docs.github.com/actions/using-jobs/assigning-permissions-to-jobs
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-24.04
