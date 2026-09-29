@@ -7,6 +7,13 @@
 #include <thread>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <sys/socket.h>
+
+#include <cerrno>
+#endif
+
 #include "gtest/gtest.h"
 
 using cofetch::Client;
@@ -69,6 +76,7 @@ TEST(Local, transport_error) {
                                       asio::as_tuple(asio::use_awaitable));
         EXPECT_TRUE(static_cast<bool>(ec));
         EXPECT_TRUE(ec.category() == cofetch::curl_category());
+        EXPECT_STREQ("curl", ec.category().name());
         EXPECT_FALSE(ec.message().empty());
         EXPECT_FALSE(res.is_ok());
         done = true;
@@ -443,19 +451,47 @@ TEST(Local, cancellation_slot_aborts_inflight_request) {
   COFETCH_REQUIRE_ECHO();
   asio::io_context io;
   Client client(io);
+  asio::cancellation_signal first_sig, second_sig;
+  int done = 0;
+  const auto on_done = [&](std::error_code ec, const Response& res) {
+    EXPECT_EQ(asio::error::operation_aborted, ec);
+    EXPECT_FALSE(res.is_ok());
+    ++done;
+  };
+  // Two in flight; the older one is cancelled first, so the lookup has to
+  // walk past the newer transfer to find it.
+  client.request(echo_base() + "/delay/3")
+      .get(asio::bind_cancellation_slot(first_sig.slot(), on_done));
+  client.request(echo_base() + "/delay/3")
+      .get(asio::bind_cancellation_slot(second_sig.slot(), on_done));
+  asio::steady_timer trigger(io, std::chrono::milliseconds(100));
+  trigger.async_wait([&](std::error_code) {
+    first_sig.emit(asio::cancellation_type::terminal);
+    second_sig.emit(asio::cancellation_type::terminal);
+  });
+  io.run();  // returns long before the 3s delay: the transfers were torn down
+  EXPECT_EQ(2, done);
+  EXPECT_EQ(0, client.pending_requests());
+}
+
+// Cancelling before the io_context ever ran: the transfer was added but not
+// kicked off yet, and still completes (posted) with operation_aborted.
+TEST(Local, cancel_before_transfer_starts) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
   asio::cancellation_signal sig;
   bool done = false;
-  client.request(echo_base() + "/delay/3")
+  client.request(echo_base() + "/get")
       .get(asio::bind_cancellation_slot(
           sig.slot(), [&](std::error_code ec, const Response& res) {
             EXPECT_EQ(asio::error::operation_aborted, ec);
-            EXPECT_FALSE(res.is_ok());
+            EXPECT_EQ(CURLE_ABORTED_BY_CALLBACK, res.curl_code_);
             done = true;
           }));
-  asio::steady_timer trigger(io, std::chrono::milliseconds(100));
-  trigger.async_wait(
-      [&](std::error_code) { sig.emit(asio::cancellation_type::terminal); });
-  io.run();  // returns long before the 3s delay: the transfer was torn down
+  sig.emit(asio::cancellation_type::terminal);
+  EXPECT_FALSE(done);  // never completed inline
+  io.run();
   EXPECT_TRUE(done);
 }
 
@@ -557,10 +593,12 @@ TEST(Response, header_parsing_uses_final_block_only) {
   EXPECT_EQ("application/json", res.header("Content-Type").value());
   EXPECT_FALSE(res.header("Location").has_value());
 
-  // A single block, or one with no status line at all, is parsed whole.
-  const Response single{CURLE_OK, 200, "", "X-One: 1\r\nX-Two: 2\r\n\r\n"};
+  // A single block, or one with no status line at all, is parsed whole;
+  // bare LF line ends, blank lines and a missing final newline are fine.
+  const Response single{CURLE_OK, 200, "", "X-One: 1\n\nX-Two: 2"};
   EXPECT_EQ(2u, single.headers().size());
   EXPECT_EQ("1", single.header("x-one").value());
+  EXPECT_EQ("2", single.header("x-two").value());
 }
 
 // One event loop per core: clients constructed and destroyed on several
@@ -597,6 +635,116 @@ TEST(Local, response_headers_from_server) {
   ASSERT_TRUE(ct.has_value());
   EXPECT_NE(std::string::npos, ct->find("application/json"));
 }
+
+// A response several times curl's receive buffer arrives over many write
+// callbacks and is reassembled in order. The 2 MiB upload also makes curl
+// send "Expect: 100-continue", so header_data_ starts with a 1xx block that
+// the parsed view must skip.
+TEST(Local, large_body_reassembled) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  const std::string payload(2 * 1024 * 1024, 'x');
+  auto fut =
+      client.async_post(echo_base() + "/post", payload, asio::use_future);
+  io.run();
+  const Response res = fut.get();
+  ASSERT_TRUE(res.is_ok());
+  EXPECT_LT(payload.size(), res.data_.size());  // the JSON echo wraps it
+  EXPECT_NE(std::string::npos, res.data_.find(payload));
+  EXPECT_EQ("application/json", res.header("content-type").value_or(""));
+}
+
+// The echo server listens on 127.0.0.1 only, so ::1 is refused, but the
+// socket for it is opened as IPv6 first. Any transport error will do.
+TEST(Local, ipv6_loopback_socket) {
+  COFETCH_REQUIRE_ECHO();
+  std::string url = echo_base();
+  const auto v4 = url.find("127.0.0.1");
+  if (v4 == std::string::npos) GTEST_SKIP() << "echo base is not 127.0.0.1";
+  url.replace(v4, 9, "[::1]");
+  asio::io_context io;
+  Client client(io);
+  bool done = false;
+  client.request(url + "/get")
+      .timeout(std::chrono::seconds(2))
+      .get([&](std::error_code ec, const Response& res) {
+        EXPECT_TRUE(static_cast<bool>(ec));
+        EXPECT_TRUE(ec.category() == cofetch::curl_category());
+        EXPECT_FALSE(res.is_ok());
+        done = true;
+      });
+  io.run();
+  EXPECT_TRUE(done);
+}
+
+// A handle curl refuses to add — here because a Request::curl hook already
+// gave it to another multi — must still complete its handler, with an error.
+TEST(Local, add_handle_failure_completes_with_error) {
+  asio::io_context io;
+  CURLM* const other = curl_multi_init();
+  bool done = false;
+  {
+    Client client(io);
+    client.request("http://127.0.0.1:1/")
+        .curl([&](CURL* h) { curl_multi_add_handle(other, h); })
+        .get([&](std::error_code ec, const Response& res) {
+          EXPECT_EQ(static_cast<int>(CURLE_FAILED_INIT), ec.value());
+          EXPECT_TRUE(ec.category() == cofetch::curl_category());
+          EXPECT_EQ(CURLE_FAILED_INIT, res.curl_code_);
+          EXPECT_FALSE(res.is_ok());
+          done = true;
+        });
+    EXPECT_FALSE(done);  // posted, never completed inside the initiating call
+    io.run();
+    EXPECT_TRUE(done);
+  }  // ~Client detaches the handle from `other` before freeing it
+  curl_multi_cleanup(other);
+}
+
+#if !defined(_WIN32)
+// A Request::curl hook installing its own CURLOPT_OPENSOCKETFUNCTION: the
+// connection socket never passes through cofetch's open callback.
+struct RawSocket {
+  int opened = 0;
+  curl_socket_t last = CURL_SOCKET_BAD;
+};
+curl_socket_t raw_open_socket(void* p, curlsocktype, curl_sockaddr* a) {
+  auto* const raw = static_cast<RawSocket*>(p);
+  ++raw->opened;
+  raw->last = ::socket(a->family, a->socktype, a->protocol);
+  return raw->last;
+}
+
+// Descriptors curl obtained elsewhere are still watched (through a dup) and,
+// when curl hands them to the close callback, closed on its behalf.
+TEST(Local, foreign_socket_is_borrowed_and_closed) {
+  COFETCH_REQUIRE_ECHO();
+  asio::io_context io;
+  Client client(io);
+  RawSocket raw;
+  bool done = false;
+  client.request(echo_base() + "/get")
+      .headers({"Connection: close"})  // closed right after the response
+      .curl([&](CURL* h) {
+        curl_easy_setopt(h, CURLOPT_OPENSOCKETFUNCTION, raw_open_socket);
+        curl_easy_setopt(h, CURLOPT_OPENSOCKETDATA, &raw);
+      })
+      .get([&](std::error_code ec, const Response& res) {
+        EXPECT_FALSE(ec);
+        EXPECT_TRUE(res.is_ok());
+        done = true;
+      });
+  io.run();
+  EXPECT_TRUE(done);
+  ASSERT_EQ(1, raw.opened);
+  // Closed by cofetch when curl asked: the descriptor is gone, not leaked.
+  const int rc = ::fcntl(raw.last, F_GETFD);
+  const int err = errno;
+  EXPECT_EQ(-1, rc);
+  EXPECT_EQ(EBADF, err);
+}
+#endif
 
 TEST(Live, get_over_tls) {
   COFETCH_REQUIRE_LIVE();

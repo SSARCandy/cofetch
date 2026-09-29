@@ -700,9 +700,7 @@ class Client {
   }
 
   static size_t header_cb(char* data, size_t n, size_t l, std::string* buf) {
-    if (buf->empty() && buf->capacity() < kHeaderReserve) {
-      buf->reserve(kHeaderReserve);
-    }
+    if (buf->empty()) buf->reserve(kHeaderReserve);  // no-op once sized
     buf->append(data, n * l);
     return n * l;
   }
@@ -788,10 +786,10 @@ class Client {
     // The protocol is a label here (the descriptor may be a socketpair end
     // or an eventfd); only the reactor registration matters to async_wait.
     state->socket.assign(net::ip::tcp::v4(), dup_fd, ec);
-    if (ec) {
+    if (ec) {  // LCOV_EXCL_START: reactor registration failing (ENOMEM)
       ::close(dup_fd);
       return nullptr;
-    }
+    }  // LCOV_EXCL_STOP
     state->fd = fd;
     SocketState* const raw = state.get();
     sockets_[fd] = std::move(state);
