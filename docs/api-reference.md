@@ -134,6 +134,9 @@ void on_done(cofetch::error_code ec, const cofetch::Response& r) {
 `Response::Headers` map (repeated fields comma-combined, the status line
 dropped). It is not cached, so keep the result if you read it repeatedly; for a
 single field, `header(name)` looks it up without building the whole map.
+Both read only the final response: when redirects are followed (or the server
+sent a `1xx` interim response) `header_data_` keeps every hop's raw block, but
+the earlier hops' fields are skipped rather than comma-joined into the result.
 
 ---
 

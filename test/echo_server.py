@@ -15,6 +15,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"  # keep-alive
+    # Nagle + the client's delayed ACK stall the second response on a
+    # keep-alive connection by ~40 ms; nginx and friends disable it too.
+    disable_nagle_algorithm = True
 
     def _read_body(self):
         n = int(self.headers.get("Content-Length", 0))

@@ -1,8 +1,11 @@
 #include <cofetch.h>
 
 #include <asio.hpp>
+#include <atomic>
 #include <cstdlib>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "gtest/gtest.h"
 
@@ -373,6 +376,13 @@ TEST(Local, follow_redirects_lands_on_target) {
         EXPECT_FALSE(ec);
         EXPECT_TRUE(res.is_ok());
         EXPECT_NE(std::string::npos, res.data_.find("\"/get\""));
+        // header_data_ keeps every hop's raw block, but the parsed view is
+        // the final response only: no Location left over from the 302s,
+        // and Content-Length is the landing page's, not "0, 0, N".
+        EXPECT_NE(std::string::npos, res.header_data_.find("302"));
+        EXPECT_FALSE(res.header("location").has_value());
+        EXPECT_EQ(std::to_string(res.data_.size()),
+                  res.header("content-length").value_or("missing"));
         done = true;
       });
   io.run();
@@ -521,6 +531,58 @@ TEST(Response, header_parsing) {
   EXPECT_EQ("text/html; charset=utf-8", res.header("Content-Type").value());
   EXPECT_EQ("a=1, b=2", res.header("set-cookie").value());
   EXPECT_FALSE(res.header("nonexistent").has_value());
+}
+
+// With redirects followed (or a 1xx interim response) curl appends one
+// header block per hop; only the last block describes the delivered body.
+TEST(Response, header_parsing_uses_final_block_only) {
+  const Response res{CURLE_OK, 200, "",
+                     "HTTP/1.1 302 Found\r\n"
+                     "Location: /next\r\n"
+                     "Content-Length: 0\r\n"
+                     "Set-Cookie: hop=1\r\n"
+                     "\r\n"
+                     "HTTP/1.1 100 Continue\r\n"
+                     "\r\n"
+                     "HTTP/2 200 \r\n"
+                     "content-type: application/json\r\n"
+                     "content-length: 42\r\n"
+                     "\r\n"};
+
+  const auto h = res.headers();
+  EXPECT_EQ(2u, h.size());
+  EXPECT_EQ("42", h.at("Content-Length"));  // not "0, 42"
+  EXPECT_EQ(0u, h.count("location"));
+  EXPECT_EQ(0u, h.count("set-cookie"));
+  EXPECT_EQ("application/json", res.header("Content-Type").value());
+  EXPECT_FALSE(res.header("Location").has_value());
+
+  // A single block, or one with no status line at all, is parsed whole.
+  const Response single{CURLE_OK, 200, "", "X-One: 1\r\nX-Two: 2\r\n\r\n"};
+  EXPECT_EQ(2u, single.headers().size());
+  EXPECT_EQ("1", single.header("x-one").value());
+}
+
+// One event loop per core: clients constructed and destroyed on several
+// threads at once must not trip over libcurl's global init/cleanup.
+TEST(Local, clients_on_parallel_threads) {
+  COFETCH_REQUIRE_ECHO();
+  constexpr int kThreads = 4;
+  std::atomic<int> ok{0};
+  std::vector<std::thread> threads;
+  for (int i = 0; i < kThreads; ++i) {
+    threads.emplace_back([&] {
+      asio::io_context io;
+      Client client(io);
+      client.async_get(echo_base() + "/get",
+                       [&](std::error_code ec, const Response& res) {
+                         if (!ec && res.is_ok()) ++ok;
+                       });
+      io.run();
+    });
+  }
+  for (auto& t : threads) t.join();
+  EXPECT_EQ(kThreads, ok.load());
 }
 
 TEST(Local, response_headers_from_server) {
